@@ -1,8 +1,8 @@
 # Teknik Şartname (Spec): WatchPath
 
-> **Girdi:** [product_brief.md](file:///Users/evren/Documents/noname/product_brief.md)
+> **Girdi:** [product_brief.md](file:///Users/evren/Documents/GitHub/watchpath/product_brief.md)
 > **Tarih:** 2026-06-24
-> **Durum:** Taslak - Kullanıcı onayı bekleniyor
+> **Durum:** Onaylandı (Autoplan Review sonrası güncellenmiş)
 
 ---
 
@@ -71,31 +71,17 @@ CREATE TABLE videos (
   published_at  TIMESTAMPTZ,
   fetched_at    TIMESTAMPTZ DEFAULT NOW(),
 
-  CONSTRAINT valid_youtube_id CHECK (char_length(youtube_id) = 11)
+  CONSTRAINT valid_youtube_id CHECK (char_length(youtube_id) >= 8 AND char_length(youtube_id) <= 20)
 );
 
 CREATE INDEX idx_videos_youtube_id ON videos(youtube_id);
 CREATE INDEX idx_videos_language ON videos(language);
 ```
 
-### 2.2 video_transcripts - Transkript Cache
-
-Amaç: Transkriptler ayrı tablo, büyük text verisi ana tabloyu şişirmesin.
-
-```sql
-CREATE TABLE video_transcripts (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  video_id      UUID REFERENCES videos(id) ON DELETE CASCADE,
-  transcript    TEXT NOT NULL,
-  ai_summary    TEXT,
-  ai_topics     TEXT[] DEFAULT '{}',
-  ai_level      TEXT CHECK (ai_level IN ('beginner', 'intermediate', 'advanced')),
-  ai_prerequisites TEXT[] DEFAULT '{}',
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-
-  UNIQUE(video_id)
-);
-```
+> [!NOTE]
+> **AUTOPLAN KARARI**: `video_transcripts` tablosu MVP'den kaldırıldı.
+> Transkriptler in-memory işlenir, DB'ye yazılmaz. DB karmaşıklığı azalır.
+> v2'de geri eklenebilir (sık erişilen transkriptleri cache'lemek için).
 
 ### 2.3 search_cache - YouTube Arama Cache
 
@@ -134,6 +120,7 @@ CREATE TABLE roadmaps (
   status        roadmap_status DEFAULT 'generating',
   video_count   INTEGER DEFAULT 0,
   view_count    INTEGER DEFAULT 0,
+  edges_data    JSONB DEFAULT '[]',
   is_public     BOOLEAN DEFAULT true,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   updated_at    TIMESTAMPTZ DEFAULT NOW()
@@ -161,7 +148,6 @@ CREATE TABLE roadmap_nodes (
   position_x    FLOAT NOT NULL,
   position_y    FLOAT NOT NULL,
   order_index   INTEGER NOT NULL,
-  parent_node_id UUID REFERENCES roadmap_nodes(id) ON DELETE SET NULL,
   metadata      JSONB DEFAULT '{}',
 
   UNIQUE(roadmap_id, order_index)
@@ -170,26 +156,9 @@ CREATE TABLE roadmap_nodes (
 CREATE INDEX idx_nodes_roadmap ON roadmap_nodes(roadmap_id);
 ```
 
-### 2.6 user_progress - Kullanıcı İlerleme Takibi (v2)
-
 > [!NOTE]
-> MVP'de opsiyonel. Kullanıcı giriş yapınca aktif olur.
-
-```sql
-CREATE TABLE user_progress (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  roadmap_id  UUID REFERENCES roadmaps(id) ON DELETE CASCADE,
-  node_id     UUID REFERENCES roadmap_nodes(id) ON DELETE CASCADE,
-  is_completed BOOLEAN DEFAULT false,
-  completed_at TIMESTAMPTZ,
-  notes       TEXT,
-
-  UNIQUE(user_id, node_id)
-);
-
-CREATE INDEX idx_progress_user_roadmap ON user_progress(user_id, roadmap_id);
-```
+> **AUTOPLAN KARARI**: `user_progress` tablosu MVP'den kaldırıldı. Auth yokken anlamsız.
+> v2'de kullanıcı giriş sistemi eklenince aktif edilecek.
 
 ### ER Diyagramı
 
@@ -447,34 +416,15 @@ Landing page'de "Popüler Yol Haritaları" bölümü için.
 
 ---
 
-### 3.7 POST /api/roadmap/generate-from-url - URL'den Roadmap
-
-```typescript
-interface GenerateFromUrlRequest {
-  youtubeUrl: string;    // tek video veya playlist URL'i
-  language: string;
-}
-
-// Süreç:
-// 1. URL'den video ID çıkar
-// 2. Video metadata + transkript çek
-// 3. AI ile konuyu ve alt konuları belirle
-// 4. Bu konularda YouTube'da ek videolar ara
-// 5. Roadmap oluştur
-```
+> [!NOTE]
+> **AUTOPLAN KARARI**: `generate-from-url` kaldırıldı.
+> `youtubeUrl` parametresi zaten `/api/roadmap/generate` endpoint'inde mevcut.
+> Ayrı endpoint gereksiz tekrar.
 
 ---
 
-### 3.8 GET /api/health - Sistem Durumu
-
-```typescript
-interface HealthResponse {
-  status: 'ok' | 'degraded';
-  quotaRemaining: number;
-  cacheHitRate: number;
-  timestamp: string;
-}
-```
+> [!NOTE]
+> **AUTOPLAN KARARI**: `/api/health` kaldırıldı. MVP'de console log yeterli.
 
 ---
 
@@ -769,22 +719,34 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
 ## 10. MVP Kapsam
 
-### MVP'de Var (Hafta 1-2)
+### MVP'de Var (Kesilmiş Kapsam)
 
-- Konu girişi ile roadmap oluşturma
+- Konu girişi + seviye dropdown ile roadmap oluşturma
 - YouTube URL girişi ile roadmap oluşturma
-- AI soru modalı (2-3 soru)
+- Async polling (status: generating/ready/failed)
 - React Flow interaktif roadmap görüntüleme
 - Video node'larına tıklayınca detay paneli
 - YouTube'da izle butonu
-- Roadmap paylaşım linki (slug)
-- Popüler roadmap'ler listesi
+- Roadmap paylaşım linki (slug + nanoid)
+- Hardcode popüler roadmap kartları
 - Responsive tasarım (mobil uyumlu)
-- SEO (SSR meta taglar, OG image)
-- YouTube API cache
-- Rate limiting
+- SEO (SSR meta taglar)
+- YouTube API cache (7 gün TTL)
+- IP bazlı rate limiting (2/gün anonim)
+- Gemini timeout + fallback
+- Transkript hata yönetimi (metadata-only fallback)
 
-### MVP'de Yok (Sonraki Sürümler)
+### MVP'de Yok (Autoplan Review ile Kesildi)
+
+- ~~AI soru modalı~~ → statik seviye dropdown
+- ~~video_transcripts tablosu~~ → in-memory işleme
+- ~~user_progress tablosu~~ → auth yok
+- ~~POST /api/roadmap/save~~ → generate'de zaten kaydediliyor
+- ~~POST /api/roadmap/generate-from-url~~ → generate'e birleştirildi
+- ~~GET /api/health~~ → console log
+- ~~Sosyal paylaşım ikonları~~ → URL kopyala yeterli
+
+### Sonraki Sürümler (v2+)
 
 - Kullanıcı hesabı / Google OAuth
 - İlerleme takibi (hangi videoyu izledim)
