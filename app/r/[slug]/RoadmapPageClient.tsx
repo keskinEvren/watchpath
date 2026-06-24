@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { RoadmapDetailResponse, RoadmapStatus } from '@/types';
 import RoadmapCanvas from '@/components/roadmap/RoadmapCanvas';
+import LoadingOverlay from '@/components/shared/LoadingOverlay';
+import NavBar from '@/components/shared/NavBar';
 
 interface Props {
   slug: string;
@@ -68,19 +70,7 @@ export default function RoadmapPageClient({ slug }: Props) {
 
   // --- Loading / generating ---
   if (status === 'loading' || status === 'generating') {
-    return (
-      <div style={overlayStyle}>
-        <div style={spinnerContainerStyle}>
-          <div style={spinnerStyle} />
-          <p style={statusTextStyle}>
-            {status === 'loading'
-              ? 'Yol haritası yükleniyor...'
-              : 'AI yol haritasını yapılandırıyor...'}
-          </p>
-          <p style={subtextStyle}>Bu işlem birkaç saniye sürebilir</p>
-        </div>
-      </div>
-    );
+    return <LoadingOverlay status="searching" />;
   }
 
   // --- Not found ---
@@ -121,13 +111,16 @@ export default function RoadmapPageClient({ slug }: Props) {
 
   // --- Ready ---
   return (
-    <RoadmapCanvas
-      nodes={data.nodes}
-      edges={data.roadmap.edges_data}
-      videos={data.videos}
-      topic={data.roadmap.topic}
-      level={data.roadmap.level}
-    />
+    <>
+      <NavBar />
+      <RoadmapCanvas
+        nodes={data.nodes}
+        edges={data.roadmap.edges_data}
+        videos={data.videos}
+        topic={data.roadmap.topic}
+        level={data.roadmap.level}
+      />
+    </>
   );
 }
 
@@ -140,35 +133,6 @@ const overlayStyle: React.CSSProperties = {
   width: '100%',
   height: '100vh',
   background: '#f7f7f3',
-};
-
-const spinnerContainerStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: 16,
-};
-
-const spinnerStyle: React.CSSProperties = {
-  width: 40,
-  height: 40,
-  border: '3px solid #e7e5e4',
-  borderTopColor: '#4d7c0f',
-  borderRadius: '50%',
-  animation: 'spin 1.2s linear infinite',
-};
-
-const statusTextStyle: React.CSSProperties = {
-  fontFamily: "'DM Sans', system-ui, sans-serif",
-  fontSize: 18,
-  fontWeight: 500,
-  color: '#1c1917',
-};
-
-const subtextStyle: React.CSSProperties = {
-  fontFamily: "'DM Sans', system-ui, sans-serif",
-  fontSize: 14,
-  color: '#a8a29e',
 };
 
 const errorContainerStyle: React.CSSProperties = {

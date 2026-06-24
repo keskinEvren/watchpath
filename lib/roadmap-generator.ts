@@ -24,14 +24,16 @@ const VIDEO_X_OFFSET = 50;
  * This runs synchronously inside a single serverless function call.
  * The client polls GET /api/roadmap/[slug] to see when status flips to "ready".
  */
-export async function generateRoadmap(
+/**
+ * Creates the roadmap DB record and returns the slug.
+ * Call this first, then fire runFullPipeline() without awaiting.
+ */
+export async function createRoadmapRecord(
   topic: string,
   level: Level,
-  language: string = 'tr'
 ): Promise<string> {
   const slug = generateSlug(topic);
 
-  // Step 1: Create roadmap record with status: generating
   const { error: insertError } = await supabaseAdmin
     .from('roadmaps')
     .insert({
@@ -47,7 +49,20 @@ export async function generateRoadmap(
     throw new Error('Failed to create roadmap record');
   }
 
-  // Run the rest of the pipeline. If anything fails, mark as "failed".
+  return slug;
+}
+
+/**
+ * Runs the full pipeline for a roadmap.
+ * Should be called without await (fire-and-forget) so the API responds instantly.
+ * On failure, marks the roadmap as "failed" in the DB.
+ */
+export async function runFullPipeline(
+  slug: string,
+  topic: string,
+  level: Level,
+  language: string = 'tr'
+): Promise<void> {
   try {
     await runPipeline(slug, topic, level, language);
   } catch (err) {
@@ -57,8 +72,6 @@ export async function generateRoadmap(
       .update({ status: 'failed', updated_at: new Date().toISOString() })
       .eq('slug', slug);
   }
-
-  return slug;
 }
 
 async function runPipeline(
