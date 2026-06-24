@@ -7,10 +7,11 @@ YouTube videolarından interaktif öğrenme yol haritaları oluşturan web uygul
 ## Kesilmiş MVP Kapsamı (Autoplan Review Sonrası)
 
 - **3+1 tablo**: `search_cache`, `videos`, `roadmaps`, `roadmap_nodes`
-- **4 endpoint**: generate, roadmap/[slug], video/[youtubeId], ai/questions (statik)
+- **3 endpoint**: generate (POST), roadmap/[slug] (GET), video/[youtubeId] (GET)
 - **3 ekran**: Landing page, Roadmap canvas, Video side panel
 - **4 node tipi**: Root, Chapter, Video, Milestone
 - **Tema**: Toprak Bahçe 🌿 (Sage + Terracotta)
+- **Generate**: Senkron backend (Vercel 60sn timeout) + client-side polling illüzyonu
 - **Auth yok**, **progress tracking yok**, **AI soru modalı yok** (v2)
 
 ---

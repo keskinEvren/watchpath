@@ -4,7 +4,7 @@
 
 ### Proje İskeleti
 - [ ] Next.js projesi oluştur (App Router, TypeScript)
-- [ ] Bağımlılıkları kur (@xyflow/react, @supabase/supabase-js, @google/generative-ai, nanoid, youtube-transcript, dagre)
+- [ ] Bağımlılıkları kur (@xyflow/react, @supabase/supabase-js, @google/generative-ai, nanoid, youtube-transcript, dagre, @types/dagre)
 - [ ] Google Fonts ekle (Playfair Display + DM Sans)
 
 ### Design System

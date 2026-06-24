@@ -56,6 +56,15 @@
 | `--color-error` | `#dc2626` | Hata mesajları |
 | `--color-success` | `#16a34a` | Başarı mesajları |
 
+### State
+
+| Token | Değer | Rol |
+|-------|-------|-----|
+| `--color-disabled-bg` | `#f0eeeb` | Disabled buton/input arkaplanı |
+| `--color-disabled-text` | `#a8a29e` | Disabled buton/input metni |
+| `--color-skeleton` | `#e7e5e4` | Skeleton loading placeholder |
+| `--color-skeleton-shine` | `#f0eeeb` | Skeleton pulse animasyonu peak rengi |
+
 ---
 
 ## Tipografi
@@ -246,6 +255,25 @@ Animation: slide-up 0.2s ease
 Auto-dismiss: 3s
 ```
 
+### Disabled Button
+
+```
+BG: #f0eeeb (disabled-bg)
+Text: #a8a29e (disabled-text)
+Border: 1px solid #e7e5e4
+Cursor: not-allowed
+Opacity: 1 (renğini kullan, opacity düşürme)
+```
+
+### Skeleton Loading
+
+```
+BG: #e7e5e4 (skeleton)
+Radius: eşleşen elemanın radius'ü
+Animation: pulse 1.5s ease-in-out infinite
+Keyframes: #e7e5e4 → #f0eeeb → #e7e5e4
+```
+
 ---
 
 ## Node Bileşenleri (React Flow)
@@ -411,6 +439,12 @@ Label: DM Sans 11px 400, fill #a8a29e, BG #f7f7f3 (canvas)
   --color-link: #006fd6;
   --color-error: #dc2626;
   --color-success: #16a34a;
+
+  /* State */
+  --color-disabled-bg: #f0eeeb;
+  --color-disabled-text: #a8a29e;
+  --color-skeleton: #e7e5e4;
+  --color-skeleton-shine: #f0eeeb;
 
   /* Typography */
   --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
