@@ -1,6 +1,6 @@
 .canvasWrap {
   width: 100%;
-  height: 100vh;
+  height: calc(100vh - 56px);
   position: relative;
 }
 
@@ -10,4 +10,16 @@
   width: 0;
   height: 0;
   overflow: hidden;
+}
+
+/* Mobile: hide minimap, full height */
+@media (max-width: 768px) {
+  .canvasWrap {
+    height: calc(100vh - 56px);
+    /* React Flow MiniMap */
+  }
+
+  .canvasWrap :global(.react-flow__minimap) {
+    display: none;
+  }
 }

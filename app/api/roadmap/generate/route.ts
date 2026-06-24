@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateRoadmap } from '@/lib/roadmap-generator';
+import { createRoadmapRecord, runFullPipeline } from '@/lib/roadmap-generator';
 import type { GenerateRequest, GenerateResponse, ErrorResponse, Level } from '@/types';
 
 // In-memory rate limiting. Resets when the server restarts.
-// Structure: IP -> { count, resetAt }
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const ANON_LIMIT_PER_DAY = 2;
+const ANON_LIMIT_PER_DAY = 10;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function checkRateLimit(ip: string): boolean {
@@ -37,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     if (!checkRateLimit(ip)) {
       const res: ErrorResponse = {
-        error: 'Rate limit exceeded. Maximum 2 roadmaps per day for anonymous users.',
+        error: 'Günlük limit aşıldı. Anonim kullanıcılar günde en fazla 10 yol haritası oluşturabilir.',
         code: 'RATE_LIMIT',
       };
       return NextResponse.json(res, { status: 429 });
@@ -56,11 +55,16 @@ export async function POST(request: NextRequest) {
       body.level && VALID_LEVELS.includes(body.level) ? body.level : 'beginner';
     const language = body.language ?? 'tr';
 
-    // Start the pipeline. This creates the roadmap record and kicks off generation.
-    // The function returns the slug immediately after creating the record.
-    // The pipeline continues running in the same request.
-    const slug = await generateRoadmap(topic, level, language);
+    // Step 1: Create roadmap record (awaited - fast DB insert)
+    const slug = await createRoadmapRecord(topic, level);
 
+    // Step 2: Fire pipeline in background (NOT awaited)
+    // Pipeline runs asynchronously, client polls GET /api/roadmap/[slug]
+    runFullPipeline(slug, topic, level, language).catch((err) => {
+      console.error('[api/generate] Background pipeline error:', err);
+    });
+
+    // Step 3: Return slug immediately
     const response: GenerateResponse = {
       slug,
       status: 'generating',

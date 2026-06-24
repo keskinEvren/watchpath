@@ -1,5 +1,11 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#f7f7f3',
+};
 
 export const metadata: Metadata = {
   title: 'WatchPath - YouTube Öğrenme Yol Haritası',
@@ -13,6 +19,7 @@ export const metadata: Metadata = {
     locale: 'tr_TR',
     siteName: 'WatchPath',
   },
+  robots: 'index, follow',
 };
 
 export default function RootLayout({
@@ -22,6 +29,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="tr">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
       <body>{children}</body>
     </html>
   );
