@@ -1,6 +1,6 @@
 # WatchPath - Task List
 
-## Gün 1: Proje Kurulumu + Design System + Veritabanı
+## ✅ Gün 1: Proje Kurulumu + Design System + Veritabanı
 
 ### Proje İskeleti
 - [x] Next.js projesi oluştur (App Router, TypeScript)
@@ -13,37 +13,34 @@
 - [x] Responsive breakpoint'ler
 
 ### Veritabanı
-- [ ] Supabase projesi oluştur (free tier)
-- [ ] DB migration: search_cache tablosu (7 gün TTL)
-- [ ] DB migration: videos tablosu (youtube_id check gevşetilmiş 8-20 char)
-- [ ] DB migration: roadmaps tablosu (edges_data JSONB dahil)
-- [ ] DB migration: roadmap_nodes tablosu (parent_node_id yok)
-- [ ] RLS politikaları uygula
+- [x] Supabase projesi oluştur (free tier)
+- [x] DB migration: search_cache, videos, roadmaps, roadmap_nodes
+- [x] RLS politikaları uygula
 
 ### Yapılandırma
 - [x] .env.local dosyası (API key'ler, Supabase URL'ler)
-- [x] lib/supabase/server.ts ve client.ts
-- [x] types/index.ts (tüm TypeScript tipleri: node, edge, roadmap, video)
+- [x] lib/supabase/server.ts ve client.ts (lazy init)
+- [x] types/index.ts (tüm TypeScript tipleri)
 
-## Gün 2: Backend Servisleri + Pipeline
+## ✅ Gün 2: Backend Servisleri + Pipeline
 
 ### Servisler
 - [x] lib/youtube.ts (searchVideos + getVideoDetails, cache-first)
 - [x] lib/transcript.ts (getTranscript, try/catch, null fallback)
-- [x] lib/gemini.ts (generateSearchTerms + generateRoadmapStructure, 30sn timeout, retry, fallback)
+- [x] lib/gemini.ts (generateSearchTerms + generateRoadmapStructure, 30sn timeout, fallback)
 - [x] lib/cache.ts (search_cache CRUD, expired temizleme)
 - [x] lib/utils.ts (slug: slugify + nanoid, süre formatlama, YouTube URL parse)
 
 ### Pipeline
 - [x] lib/roadmap-generator.ts (topic → terms → search → transcript → AI → roadmap)
-- [x] Async status yönetimi (searching → found_videos → fetching_transcripts → analyzing → ready/failed)
+- [x] Senkron generate + client polling mekanizması
 
 ### API Routes
-- [x] app/api/roadmap/generate/route.ts (POST, rate limit, async polling)
-- [x] app/api/roadmap/[slug]/route.ts (GET, SSR metadata, view_count++)
+- [x] app/api/roadmap/generate/route.ts (POST, rate limit, senkron pipeline)
+- [x] app/api/roadmap/[slug]/route.ts (GET, view_count++)
 - [x] app/api/video/[youtubeId]/route.ts (GET, cache-first)
 
-## Gün 3: Frontend - Roadmap Canvas + Video Panel
+## ✅ Gün 3: Frontend - Roadmap Canvas + Video Panel
 
 ### Node Bileşenleri
 - [x] components/roadmap/RootNode.tsx (sage sol border, Playfair başlık, meta)
@@ -56,51 +53,52 @@
 - [x] components/roadmap/RoadmapCanvas.tsx (dagre auto-layout, TB yönü)
 - [x] components/roadmap/CanvasControls.tsx (zoom +/-, fit-to-screen)
 - [x] Minimap entegrasyonu (sağ alt)
-- [x] Chapter collapse/expand mantığı
+- [x] Chapter collapse/expand mantığı (BFS)
 
 ### Video Panel
 - [x] components/roadmap/VideoPanel.tsx (400px slide-in, desktop)
 - [x] Mobil: full-width bottom sheet uyarlaması
-- [x] VideoThumbnail, VideoMeta, VideoSummary, WatchOnYouTube, RelatedNodes
+- [x] Thumbnail, meta, özet, YouTube'da İzle CTA, bağlı node'lar
 
 ### Roadmap Sayfası
-- [x] app/r/[slug]/page.tsx (SSR metadata, status polling, canvas + panel)
+- [x] app/r/[slug]/page.tsx (SSR metadata)
+- [x] app/r/[slug]/RoadmapPageClient.tsx (polling + canvas render)
 
-## Gün 4: Landing Page + Shared + Polish
+## ✅ Gün 4: Landing Page + Shared
 
 ### Landing Page
 - [x] components/landing/Hero.tsx (Playfair 56px başlık, DM Sans alt metin)
 - [x] components/landing/SearchSection.tsx (TopicInput + LevelSelect + GenerateButton)
 - [x] components/landing/HowItWorks.tsx (3 adım: gir, bekle, keşfet)
-- [x] components/landing/PopularRoadmaps.tsx (hardcode 5-6 kart)
+- [x] components/landing/PopularRoadmaps.tsx (hardcode 6 kart)
 - [x] app/page.tsx (tüm landing bileşenlerini birleştir)
 
 ### Shared
-- [x] components/shared/NavBar.tsx (sticky, blur backdrop, design system'e uygun)
-- [x] components/shared/LoadingOverlay.tsx (polling status mesajları, progress bar)
-- [x] components/shared/ErrorState.tsx (hata gösterimi + tekrar dene)
-- [x] components/shared/Toast.tsx (link kopyalandı bildirimi)
+- [x] components/shared/NavBar.tsx (sticky, blur backdrop)
+- [x] components/shared/LoadingOverlay.tsx (polling status mesajları)
+- [x] components/shared/ErrorState.tsx (hata + boş state)
+- [x] components/shared/Toast.tsx (useToast hook, 3s auto-dismiss)
+- [x] Rate limiting (IP bazlı, anonim 2/gün, in-memory)
 
-### Polish
-- [x] Rate limiting middleware (IP bazlı, anonim 2/gün)
-- [ ] Error boundary
-- [ ] Responsive kontrol (375px, 768px, 1024px)
-- [ ] Design system tutarlılık kontrolü (tüm renkler, fontlar, spacing)
+---
 
-## Gün 5: Test + Deploy
+## 🔲 Gün 5: Polish + Test + Deploy
 
-### Manuel Test
-- [ ] "React" konusu → roadmap oluştur (15sn içinde, 10+ video)
-- [ ] Node tıkla → Video panel açılsın
-- [ ] Chapter collapse/expand çalışsın
-- [ ] Slug paylaşımı → başka tarayıcıda aynı roadmap
-- [ ] Mobil responsive (375px, pinch zoom)
-- [ ] Rate limit test (3. roadmap → hata)
-- [ ] Gemini timeout → fallback roadmap
-- [ ] Altyazısız video → metadata-only roadmap
+### 🔴 Kritik
+- [ ] Gemini retry mekanizması: 429 alınca retryDelay kadar bekle, tekrar dene (şu an fallback'e düşüyor)
+- [ ] Error boundary (app genelinde)
 
-### Deploy
-- [ ] 5-6 popüler konuyu ön-cache'le
+### 🟡 Polish
+- [ ] Responsive test (375px, 768px, 1024px)
+- [ ] Design system tutarlılık kontrolü (renkler, fontlar, spacing)
+- [ ] Gemini'li roadmap test (çoklu kategori, akıllı sıralama)
+- [ ] Loading overlay'de adım adım status gösterimi test
+
+### 🟢 Deploy
 - [ ] Vercel'e deploy
 - [ ] Domain bağlantısı (watchpath.space)
+- [ ] 5-6 popüler konuyu ön-cache'le
 - [ ] Lighthouse: SEO > 90, Performance > 80
+
+### 📝 Bilinen Sorunlar
+- Gemini free tier dakikada 15 istek limiti. Ardışık roadmap oluşturmada 429 hatası alınıyor, fallback (tek kategori, izlenme sıralı) devreye giriyor. Retry eklenince çözülecek.
