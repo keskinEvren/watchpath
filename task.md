@@ -28,61 +28,61 @@
 ## Gün 2: Backend Servisleri + Pipeline
 
 ### Servisler
-- [ ] lib/youtube.ts (searchVideos + getVideoDetails, cache-first)
-- [ ] lib/transcript.ts (getTranscript, try/catch, null fallback)
-- [ ] lib/gemini.ts (generateSearchTerms + generateRoadmapStructure, 30sn timeout, retry, fallback)
-- [ ] lib/cache.ts (search_cache CRUD, expired temizleme)
-- [ ] lib/utils.ts (slug: slugify + nanoid, süre formatlama, YouTube URL parse)
+- [x] lib/youtube.ts (searchVideos + getVideoDetails, cache-first)
+- [x] lib/transcript.ts (getTranscript, try/catch, null fallback)
+- [x] lib/gemini.ts (generateSearchTerms + generateRoadmapStructure, 30sn timeout, retry, fallback)
+- [x] lib/cache.ts (search_cache CRUD, expired temizleme)
+- [x] lib/utils.ts (slug: slugify + nanoid, süre formatlama, YouTube URL parse)
 
 ### Pipeline
-- [ ] lib/roadmap-generator.ts (topic → terms → search → transcript → AI → roadmap)
-- [ ] Async status yönetimi (searching → found_videos → fetching_transcripts → analyzing → ready/failed)
+- [x] lib/roadmap-generator.ts (topic → terms → search → transcript → AI → roadmap)
+- [x] Async status yönetimi (searching → found_videos → fetching_transcripts → analyzing → ready/failed)
 
 ### API Routes
-- [ ] app/api/roadmap/generate/route.ts (POST, rate limit, async polling)
-- [ ] app/api/roadmap/[slug]/route.ts (GET, SSR metadata, view_count++)
-- [ ] app/api/video/[youtubeId]/route.ts (GET, cache-first)
+- [x] app/api/roadmap/generate/route.ts (POST, rate limit, async polling)
+- [x] app/api/roadmap/[slug]/route.ts (GET, SSR metadata, view_count++)
+- [x] app/api/video/[youtubeId]/route.ts (GET, cache-first)
 
 ## Gün 3: Frontend - Roadmap Canvas + Video Panel
 
 ### Node Bileşenleri
-- [ ] components/roadmap/RootNode.tsx (sage sol border, Playfair başlık, meta)
-- [ ] components/roadmap/ChapterNode.tsx (sage tint BG, collapse/expand toggle)
-- [ ] components/roadmap/VideoNode.tsx (terra sol kenar, thumbnail, hover scale)
-- [ ] components/roadmap/MilestoneNode.tsx (dashed pill, sage text)
-- [ ] components/roadmap/CustomEdge.tsx (prerequisite/related/optional stilleri)
+- [x] components/roadmap/RootNode.tsx (sage sol border, Playfair başlık, meta)
+- [x] components/roadmap/ChapterNode.tsx (sage tint BG, collapse/expand toggle)
+- [x] components/roadmap/VideoNode.tsx (terra sol kenar, thumbnail, hover scale)
+- [x] components/roadmap/MilestoneNode.tsx (dashed pill, sage text)
+- [x] components/roadmap/CustomEdge.tsx (prerequisite/related/optional stilleri)
 
 ### Canvas
-- [ ] components/roadmap/RoadmapCanvas.tsx (dagre auto-layout, TB yönü)
-- [ ] components/roadmap/CanvasControls.tsx (zoom +/-, fit-to-screen)
-- [ ] Minimap entegrasyonu (sağ alt)
-- [ ] Chapter collapse/expand mantığı
+- [x] components/roadmap/RoadmapCanvas.tsx (dagre auto-layout, TB yönü)
+- [x] components/roadmap/CanvasControls.tsx (zoom +/-, fit-to-screen)
+- [x] Minimap entegrasyonu (sağ alt)
+- [x] Chapter collapse/expand mantığı
 
 ### Video Panel
-- [ ] components/roadmap/VideoPanel.tsx (400px slide-in, desktop)
-- [ ] Mobil: full-width bottom sheet uyarlaması
-- [ ] VideoThumbnail, VideoMeta, VideoSummary, WatchOnYouTube, RelatedNodes
+- [x] components/roadmap/VideoPanel.tsx (400px slide-in, desktop)
+- [x] Mobil: full-width bottom sheet uyarlaması
+- [x] VideoThumbnail, VideoMeta, VideoSummary, WatchOnYouTube, RelatedNodes
 
 ### Roadmap Sayfası
-- [ ] app/r/[slug]/page.tsx (SSR metadata, status polling, canvas + panel)
+- [x] app/r/[slug]/page.tsx (SSR metadata, status polling, canvas + panel)
 
 ## Gün 4: Landing Page + Shared + Polish
 
 ### Landing Page
-- [ ] components/landing/Hero.tsx (Playfair 56px başlık, DM Sans alt metin)
-- [ ] components/landing/SearchSection.tsx (TopicInput + LevelSelect + GenerateButton)
-- [ ] components/landing/HowItWorks.tsx (3 adım: gir, bekle, keşfet)
-- [ ] components/landing/PopularRoadmaps.tsx (hardcode 5-6 kart)
-- [ ] app/page.tsx (tüm landing bileşenlerini birleştir)
+- [x] components/landing/Hero.tsx (Playfair 56px başlık, DM Sans alt metin)
+- [x] components/landing/SearchSection.tsx (TopicInput + LevelSelect + GenerateButton)
+- [x] components/landing/HowItWorks.tsx (3 adım: gir, bekle, keşfet)
+- [x] components/landing/PopularRoadmaps.tsx (hardcode 5-6 kart)
+- [x] app/page.tsx (tüm landing bileşenlerini birleştir)
 
 ### Shared
-- [ ] components/shared/NavBar.tsx (sticky, blur backdrop, design system'e uygun)
-- [ ] components/shared/LoadingOverlay.tsx (polling status mesajları, progress bar)
-- [ ] components/shared/ErrorState.tsx (hata gösterimi + tekrar dene)
-- [ ] components/shared/Toast.tsx (link kopyalandı bildirimi)
+- [x] components/shared/NavBar.tsx (sticky, blur backdrop, design system'e uygun)
+- [x] components/shared/LoadingOverlay.tsx (polling status mesajları, progress bar)
+- [x] components/shared/ErrorState.tsx (hata gösterimi + tekrar dene)
+- [x] components/shared/Toast.tsx (link kopyalandı bildirimi)
 
 ### Polish
-- [ ] Rate limiting middleware (IP bazlı, anonim 2/gün)
+- [x] Rate limiting middleware (IP bazlı, anonim 2/gün)
 - [ ] Error boundary
 - [ ] Responsive kontrol (375px, 768px, 1024px)
 - [ ] Design system tutarlılık kontrolü (tüm renkler, fontlar, spacing)

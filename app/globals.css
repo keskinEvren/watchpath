@@ -395,3 +395,11 @@ a:hover {
     font-size: 28px;
   }
 }
+
+/* ---- Spinner ---- */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
