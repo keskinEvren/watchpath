@@ -3,14 +3,14 @@
 ## Gün 1: Proje Kurulumu + Design System + Veritabanı
 
 ### Proje İskeleti
-- [ ] Next.js projesi oluştur (App Router, TypeScript)
-- [ ] Bağımlılıkları kur (@xyflow/react, @supabase/supabase-js, @google/generative-ai, nanoid, youtube-transcript, dagre, @types/dagre)
-- [ ] Google Fonts ekle (Playfair Display + DM Sans)
+- [x] Next.js projesi oluştur (App Router, TypeScript)
+- [x] Bağımlılıkları kur (@xyflow/react, @supabase/supabase-js, @google/generative-ai, nanoid, youtube-transcript, dagre, @types/dagre)
+- [x] Google Fonts ekle (Playfair Display + DM Sans)
 
 ### Design System
-- [ ] app/globals.css: tüm CSS custom properties (design_system.md'den)
-- [ ] Base tipografi kuralları (Playfair Display başlıklar, DM Sans UI)
-- [ ] Responsive breakpoint'ler
+- [x] app/globals.css: tüm CSS custom properties (design_system.md'den)
+- [x] Base tipografi kuralları (Playfair Display başlıklar, DM Sans UI)
+- [x] Responsive breakpoint'ler
 
 ### Veritabanı
 - [ ] Supabase projesi oluştur (free tier)
@@ -21,9 +21,9 @@
 - [ ] RLS politikaları uygula
 
 ### Yapılandırma
-- [ ] .env.local dosyası (API key'ler, Supabase URL'ler)
-- [ ] lib/supabase/server.ts ve client.ts
-- [ ] types/index.ts (tüm TypeScript tipleri: node, edge, roadmap, video)
+- [x] .env.local dosyası (API key'ler, Supabase URL'ler)
+- [x] lib/supabase/server.ts ve client.ts
+- [x] types/index.ts (tüm TypeScript tipleri: node, edge, roadmap, video)
 
 ## Gün 2: Backend Servisleri + Pipeline
 

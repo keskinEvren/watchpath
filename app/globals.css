@@ -1,0 +1,397 @@
+/* ============================================================
+   WatchPath - Design System: Toprak Bahçe 🌿
+   Source: design_system.md
+   ============================================================ */
+
+/* ---- Google Fonts ---- */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Playfair+Display:wght@400&display=swap');
+
+/* ---- CSS Custom Properties ---- */
+:root {
+  /* Surfaces */
+  --color-canvas: #f7f7f3;
+  --color-surface: #ffffff;
+  --color-hover: #f0eeeb;
+
+  /* Text */
+  --color-ink: #1c1917;
+  --color-secondary: #57534e;
+  --color-muted: #a8a29e;
+
+  /* Borders */
+  --color-border: #e7e5e4;
+  --color-border-strong: #d6d3d1;
+
+  /* Sage (structural accent) */
+  --color-sage-cta: #4d7c0f;
+  --color-sage-cta-hover: #3f6212;
+  --color-sage-accent: #65a30d;
+  --color-sage-tint: #ecfccb;
+  --color-sage-border: #84cc16;
+
+  /* Terracotta (content accent) */
+  --color-terra: #c2410c;
+  --color-terra-tint: #fff7ed;
+  --color-terra-border: #ea580c;
+
+  /* Utility */
+  --color-link: #006fd6;
+  --color-error: #dc2626;
+  --color-success: #16a34a;
+
+  /* State */
+  --color-disabled-bg: #f0eeeb;
+  --color-disabled-text: #a8a29e;
+  --color-skeleton: #e7e5e4;
+  --color-skeleton-shine: #f0eeeb;
+
+  /* Typography */
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-ui: 'DM Sans', system-ui, -apple-system, sans-serif;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+
+  /* Layout */
+  --page-max-width: 1200px;
+  --section-gap: 64px;
+  --card-padding: 24px;
+  --card-padding-compact: 16px;
+  --element-gap: 16px;
+
+  /* Radius */
+  --radius-card: 12px;
+  --radius-input: 8px;
+  --radius-pill: 9999px;
+  --radius-button: 8px;
+  --radius-badge: 9999px;
+  --radius-tooltip: 4px;
+  --radius-thumb: 8px;
+  --radius-node-lg: 16px;
+  --radius-node: 12px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow-nav: 0 0 24px rgba(0, 0, 0, 0.03);
+}
+
+/* ---- Base Reset ---- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
+}
+
+/* ---- Typography ---- */
+
+/* Playfair Display: headlines only */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+
+h1 {
+  font-size: 56px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 36px;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+h3 {
+  font-size: 24px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* DM Sans: all UI text */
+p, span, a, button, input, select, textarea, label, li {
+  font-family: var(--font-ui);
+  letter-spacing: 0.01em;
+}
+
+a {
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ---- Buttons ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-sage-border);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background-color: var(--color-sage-cta);
+  color: #ffffff;
+  font-size: 15px;
+  padding: 10px 24px;
+  border-radius: var(--radius-pill);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-sage-cta-hover);
+}
+
+.btn-primary:disabled {
+  background-color: var(--color-disabled-bg);
+  color: var(--color-disabled-text);
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-size: 14px;
+  font-weight: 400;
+  padding: 8px 20px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-hover);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-link);
+  font-size: 14px;
+  font-weight: 400;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+}
+
+.btn-ghost:hover {
+  text-decoration: underline;
+}
+
+/* ---- Input ---- */
+
+.input {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-ink);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-input);
+  padding: 12px 16px;
+  letter-spacing: 0.01em;
+  width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input::placeholder {
+  color: var(--color-muted);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-sage-border);
+  box-shadow: 0 0 0 3px rgba(132, 204, 22, 0.15);
+}
+
+/* ---- Cards ---- */
+
+.card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: var(--card-padding);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* ---- Badge ---- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 4px 12px;
+  border-radius: var(--radius-badge);
+}
+
+.badge-sage {
+  background-color: var(--color-sage-tint);
+  color: var(--color-sage-cta);
+}
+
+.badge-terra {
+  background-color: var(--color-terra-tint);
+  color: var(--color-terra);
+}
+
+/* ---- Toast ---- */
+
+.toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--color-ink);
+  color: #ffffff;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 400;
+  padding: 12px 20px;
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  animation: toast-slide-up 0.2s ease-out;
+}
+
+@keyframes toast-slide-up {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* ---- Skeleton ---- */
+
+.skeleton {
+  background-color: var(--color-skeleton);
+  border-radius: var(--radius-input);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    background-color: var(--color-skeleton);
+  }
+  50% {
+    background-color: var(--color-skeleton-shine);
+  }
+}
+
+/* ---- Layout Utilities ---- */
+
+.container {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+.section {
+  padding: var(--section-gap) 0;
+}
+
+/* ---- React Flow Overrides ---- */
+
+.react-flow__minimap {
+  border-radius: var(--radius-card) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.react-flow__controls {
+  border-radius: var(--radius-input) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.react-flow__controls-button {
+  border-bottom: 1px solid var(--color-border) !important;
+  background: var(--color-surface) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--color-hover) !important;
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 1024px) {
+  h1 {
+    font-size: 42px;
+  }
+  h2 {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 768px) {
+  h1 {
+    font-size: 36px;
+  }
+  h2 {
+    font-size: 24px;
+  }
+  .container {
+    padding: 0 var(--space-4);
+  }
+  .section {
+    padding: var(--space-12) 0;
+  }
+}
+
+@media (max-width: 375px) {
+  h1 {
+    font-size: 28px;
+  }
+}
