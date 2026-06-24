@@ -174,6 +174,56 @@ Generate 10-20sn sürer. Polling ile adım adım güncellenen durum mesajları:
 
 ---
 
+## Hata & Boş State'ler
+
+### Empty State (Sonuç Bulunamadı)
+
+YouTube'da hiç sonuç bulunamazsa veya Gemini roadmap oluştuamazsa:
+
+- İkon: 🔍 (64px, muted renk)
+- Başlık: "Bu konuda video bulamadık" (DM Sans 20px 500 ink)
+- Alt metin: "Farklı bir konu veya daha genel bir terim deneyin" (DM Sans 15px 400 secondary)
+- CTA: "Tekrar Dene" (secondary button)
+
+### Error State (Hata)
+
+Network hatası, API limiti aşıldı, beklenmeyen hata:
+
+- İkon: ⚠️ (64px, terra renk)
+- Başlık: "Bir şeyler ters gitti" (DM Sans 20px 500 ink)
+- Alt metin: Hataya özel mesaj (DM Sans 15px 400 secondary)
+- CTA: "Tekrar Dene" (primary button)
+- Rate limit aşıldığında: inline hata mesajı, SearchSection altında gösterilir (toast değil)
+
+---
+
+## Generate Mekanizması
+
+Backend **senkron** çalışır (Vercel serverless 60sn timeout yeterli). Client deneyimi **async hissettirir**:
+
+```
+1. Client POST /api/roadmap/generate → { topic, level }
+2. Server slug oluşturur, DB'ye roadmap kaydı yazar (status: "generating")
+3. Server slug'ı client'a döner → { slug }
+4. Client /r/[slug] sayfasına redirect olur
+5. /r/[slug] sayfası GET /api/roadmap/[slug] ile poll eder (2sn interval)
+6. Backend pipeline tamamlanınca DB'de status → "ready" + node/edge data yazılır
+7. Client status: "ready" görünce polling durur, canvas render eder
+```
+
+Pipeline sırası (senkron, tek request içinde):
+- Supabase'e roadmap kaydı yaz (generating)
+- Gemini'den search term'leri al
+- YouTube'da ara (cache-first)
+- Transkriptleri çek (try/catch, null OK)
+- Gemini'ye videoları gönder, roadmap yapısı al
+- Node'ları ve edge'leri DB'ye yaz
+- Status → "ready"
+
+**Timeout durumu:** 55sn'de hala bitmezse status → "failed", client'a hata göster.
+
+---
+
 ## Renk Kodlama Kuralları
 
 - **Sage** = yapısal, navigasyon (root, chapter, milestone, CTA, focus ring)

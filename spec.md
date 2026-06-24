@@ -615,20 +615,8 @@ CREATE POLICY "Public roadmaps readable by all"
   ON roadmaps FOR SELECT
   USING (is_public = true);
 
-CREATE POLICY "Users can read own roadmaps"
-  ON roadmaps FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own roadmaps"
-  ON roadmaps FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
--- Progress: Sadece kendi ilerlemeni görebilirsin
-ALTER TABLE user_progress ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users manage own progress"
-  ON user_progress FOR ALL
-  USING (auth.uid() = user_id);
+-- MVP'de auth yok, tüm roadmap'ler public
+-- v2'de user_id bazlı insert/update policy'leri eklenecek
 
 -- Videos ve search_cache: Service role ile yönetilir (API routes)
 -- Client'tan direkt erişim yok
@@ -639,56 +627,50 @@ CREATE POLICY "Users manage own progress"
 ## 8. Dosya Yapısı (Next.js App Router)
 
 ```
-noname/
+watchpath/
 ├── app/
 │   ├── layout.tsx              # Root layout, fontlar, meta
 │   ├── page.tsx                # Landing page
+│   ├── globals.css             # Design system CSS custom properties
 │   ├── r/
 │   │   └── [slug]/
-│   │       └── page.tsx        # Roadmap sayfası (SSR)
-│   ├── api/
-│   │   ├── ai/
-│   │   │   └── questions/
-│   │   │       └── route.ts    # POST: Soru oluşturma
-│   │   ├── roadmap/
-│   │   │   ├── generate/
-│   │   │   │   └── route.ts    # POST: Roadmap oluşturma
-│   │   │   ├── save/
-│   │   │   │   └── route.ts    # POST: Kaydetme
-│   │   │   ├── popular/
-│   │   │   │   └── route.ts    # GET: Popüler roadmap'ler
-│   │   │   └── [slug]/
-│   │   │       └── route.ts    # GET: Roadmap detay
-│   │   ├── video/
-│   │   │   └── [youtubeId]/
-│   │   │       └── route.ts    # GET: Video detay
-│   │   └── health/
-│   │       └── route.ts        # GET: Sistem durumu
-│   └── globals.css
+│   │       └── page.tsx        # Roadmap sayfası (SSR + polling)
+│   └── api/
+│       ├── roadmap/
+│       │   ├── generate/
+│       │   │   └── route.ts    # POST: Roadmap oluşturma (senkron + polling)
+│       │   └── [slug]/
+│       │       └── route.ts    # GET: Roadmap detay + status
+│       └── video/
+│           └── [youtubeId]/
+│               └── route.ts    # GET: Video detay (cache-first)
 ├── components/
 │   ├── landing/
-│   │   ├── SearchBar.tsx
-│   │   ├── PopularRoadmaps.tsx
-│   │   └── Hero.tsx
+│   │   ├── Hero.tsx
+│   │   ├── SearchSection.tsx
+│   │   ├── HowItWorks.tsx
+│   │   └── PopularRoadmaps.tsx
 │   ├── roadmap/
-│   │   ├── RoadmapCanvas.tsx   # React Flow wrapper
-│   │   ├── VideoNode.tsx       # Custom node
-│   │   ├── CategoryNode.tsx    # Custom node
-│   │   ├── MilestoneNode.tsx   # Custom node
-│   │   ├── RootNode.tsx        # Custom node
-│   │   └── VideoPanel.tsx      # Side panel
-│   ├── questions/
-│   │   └── QuestionsModal.tsx
+│   │   ├── RoadmapCanvas.tsx   # React Flow wrapper + dagre
+│   │   ├── RootNode.tsx        # Custom node: sage sol border
+│   │   ├── ChapterNode.tsx     # Custom node: sage tint, collapse
+│   │   ├── VideoNode.tsx       # Custom node: terra sol kenar
+│   │   ├── MilestoneNode.tsx   # Custom node: dashed pill
+│   │   ├── CustomEdge.tsx      # 3 edge tipi
+│   │   ├── CanvasControls.tsx  # Zoom +/-, fit-to-screen
+│   │   └── VideoPanel.tsx      # Side panel (400px slide-in)
 │   └── shared/
-│       ├── ShareModal.tsx
-│       └── LoadingOverlay.tsx
+│       ├── NavBar.tsx
+│       ├── LoadingOverlay.tsx
+│       ├── ErrorState.tsx
+│       └── Toast.tsx
 ├── lib/
 │   ├── youtube.ts              # YouTube API wrapper
 │   ├── transcript.ts           # Transkript çekme
 │   ├── gemini.ts               # Gemini API wrapper
 │   ├── supabase/
-│   │   ├── client.ts           # Browser client
-│   │   └── server.ts           # Server client
+│   │   ├── client.ts           # Browser client (MVP'de minimal)
+│   │   └── server.ts           # Server client (service role)
 │   ├── cache.ts                # Cache yönetimi
 │   ├── roadmap-generator.ts    # Ana pipeline
 │   └── utils.ts                # Slug, süre formatlama vs.
@@ -697,7 +679,7 @@ noname/
 ├── public/
 │   └── og-default.png
 ├── package.json
-├── next.config.js
+├── next.config.ts
 └── .env.local
 ```
 
