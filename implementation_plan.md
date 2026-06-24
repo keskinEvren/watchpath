@@ -4,156 +4,156 @@
 
 YouTube videolarından interaktif öğrenme yol haritaları oluşturan web uygulaması. Kullanıcı konu + seviye seçer, uygulama YouTube'dan video bulur, AI ile yapılandırır, React Flow ile görsel roadmap sunar.
 
-## Kesilmiş MVP Kapsamı
+## Kesilmiş MVP Kapsamı (Autoplan Review Sonrası)
 
-Review sonrası kesilmiş kapsam:
-
-- **3 tablo**: `search_cache`, `videos`, `roadmaps` + `roadmap_nodes`
+- **3+1 tablo**: `search_cache`, `videos`, `roadmaps`, `roadmap_nodes`
 - **4 endpoint**: generate, roadmap/[slug], video/[youtubeId], ai/questions (statik)
 - **3 ekran**: Landing page, Roadmap canvas, Video side panel
+- **4 node tipi**: Root, Chapter, Video, Milestone
+- **Tema**: Toprak Bahçe 🌿 (Sage + Terracotta)
 - **Auth yok**, **progress tracking yok**, **AI soru modalı yok** (v2)
+
+---
+
+## Referans Dokümanlar
+
+- [spec.md](./spec.md) - Teknik şartname (DB şeması, API endpoint'leri)
+- [design_system.md](./design_system.md) - Toprak Bahçe renk, tipografi, bileşen tanımları
+- [component_architecture.md](./component_architecture.md) - Node tipleri, canvas deneyimi, component ağacı
 
 ---
 
 ## Proposed Changes
 
-### Altyapı Kurulumu
+### Gün 1: Altyapı Kurulumu
 
 #### [NEW] Next.js Projesi
-- `npx create-next-app@latest` ile App Router projesi oluştur
-- React Flow, Supabase client, Google Generative AI SDK, nanoid bağımlılıkları ekle
+- `npx create-next-app@latest` ile App Router + TypeScript
+- Bağımlılıklar: `@xyflow/react`, `@supabase/supabase-js`, `@google/generative-ai`, `nanoid`, `youtube-transcript`, `dagre`
+- Google Fonts: Playfair Display + DM Sans
+
+#### [NEW] Design System CSS
+- `app/globals.css` içinde tüm CSS custom properties (`design_system.md`'den)
+- Base reset ve tipografi kuralları
+- Responsive breakpoint'ler
 
 #### [NEW] Supabase Kurulumu
 - Supabase projesi oluştur (free tier)
-- 3+1 tablo migration'ı çalıştır (search_cache, videos, roadmaps, roadmap_nodes)
-- RLS politikaları uygula
+- 4 tablo migration'ı: `search_cache`, `videos`, `roadmaps`, `roadmap_nodes`
+- `edges_data JSONB` kolonu roadmaps tablosunda
+- RLS politikaları
 
-#### [NEW] `.env.local`
-- YOUTUBE_API_KEY, GEMINI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+#### [NEW] Proje yapılandırması
+- `.env.local` (API key'ler)
+- `lib/supabase/server.ts` ve `lib/supabase/client.ts`
+- `types/index.ts` (tüm TypeScript tipleri)
 
 ---
 
-### Backend Servisleri
+### Gün 2: Backend Servisleri + Pipeline
 
 #### [NEW] `lib/youtube.ts`
-- `searchVideos(query, language, maxResults)`: YouTube search.list wrapper
-- `getVideoDetails(videoIds[])`: videos.list batch wrapper
-- Cache-first: search_cache tablosundan bak, yoksa API çağır ve cache'le
+- `searchVideos()`: search.list wrapper, cache-first
+- `getVideoDetails()`: videos.list batch wrapper
 
 #### [NEW] `lib/transcript.ts`
-- `getTranscript(youtubeId)`: youtube-transcript kütüphanesi wrapper
-- try/catch ile sarılmış, hata durumunda null dön
-- Transkript in-memory işlenir, DB'ye yazılmaz
+- `getTranscript()`: youtube-transcript wrapper, try/catch, null fallback
 
 #### [NEW] `lib/gemini.ts`
-- `generateRoadmapStructure(videos, topic, level)`: Gemini'ye video listesi gönder, roadmap yapısı al
-- `generateSearchTerms(topic, level)`: Konudan 3-5 arama terimi türet
-- 30sn timeout, JSON parse retry, fallback (view_count sıralama)
+- `generateSearchTerms()`: konudan 3-5 arama terimi
+- `generateRoadmapStructure()`: video listesinden roadmap yapısı
+- 30sn timeout, JSON retry, fallback (view_count sıralama)
 
 #### [NEW] `lib/roadmap-generator.ts`
-- Ana pipeline: topic → search terms → YouTube search → transcript → Gemini → roadmap
-- Async: roadmap status generating → ready | failed
-- Tüm error handling burada
+- Ana pipeline: topic → terms → search → transcript → AI → roadmap
+- Async status yönetimi (generating → ready | failed)
+- Detaylı status: searching, found_videos, fetching_transcripts, analyzing
 
-#### [NEW] `lib/supabase/server.ts` ve `lib/supabase/client.ts`
-- Supabase client oluşturma
+#### [NEW] `lib/cache.ts` + `lib/utils.ts`
+- Cache CRUD, slug oluşturma (slugify + nanoid), süre formatlama
 
-#### [NEW] `lib/cache.ts`
-- search_cache CRUD
-- Expired cache temizleme
-
-#### [NEW] `lib/utils.ts`
-- Slug oluşturma (slugify + nanoid)
-- Süre formatlama
-- YouTube URL parse
+#### [NEW] API Routes
+- `POST /api/roadmap/generate` (rate limit, async polling)
+- `GET /api/roadmap/[slug]` (SSR metadata)
+- `GET /api/video/[youtubeId]` (cache-first)
 
 ---
 
-### API Endpoints
+### Gün 3: Frontend - Roadmap Canvas
 
-#### [NEW] `app/api/roadmap/generate/route.ts`
-- POST: topic, level, language, youtubeUrl? alır
-- Async polling: hemen slug döner, arka planda roadmap oluşturur
-- Rate limit: IP başına günde 2 (anonim)
-- Response: `{ slug, status: "generating" }`
+#### [NEW] React Flow Node Bileşenleri
+- `components/roadmap/RootNode.tsx` - Sage sol border, konu + meta
+- `components/roadmap/ChapterNode.tsx` - Sage tint BG, collapse/expand
+- `components/roadmap/VideoNode.tsx` - Terracotta sol kenar, thumbnail
+- `components/roadmap/MilestoneNode.tsx` - Dashed pill, sage text
 
-#### [NEW] `app/api/roadmap/[slug]/route.ts`
-- GET: slug ile roadmap getir
-- status: generating → loading, ready → data, failed → error
-- Her görüntülemede view_count++
-- SSR için metadata döner
+#### [NEW] Canvas Wrapper
+- `components/roadmap/RoadmapCanvas.tsx` - dagre auto-layout, minimap, zoom controls
+- `components/roadmap/CustomEdge.tsx` - 3 edge tipi (prerequisite, related, optional)
+- `components/roadmap/CanvasControls.tsx` - Zoom +/-, fit-to-screen
 
-#### [NEW] `app/api/video/[youtubeId]/route.ts`
-- GET: video detay (cache-first)
+#### [NEW] Video Panel
+- `components/roadmap/VideoPanel.tsx` - 400px slide-in side panel
+- Thumbnail, meta, AI özet, YouTube'da İzle, bağlı node'lar
+- Mobil: full-width bottom sheet
 
-#### [NEW] `app/api/ai/questions/route.ts`
-- POST: statik seviye seçenekleri döndür (Gemini çağırmaz)
+#### [NEW] Roadmap Sayfası
+- `app/r/[slug]/page.tsx` - SSR, status polling, canvas + panel
 
 ---
 
-### Frontend Bileşenleri
+### Gün 4: Landing Page + Polish
 
-#### [NEW] `app/page.tsx` - Landing Page
-- Hero section: başlık + açıklama
-- Arama kutusu (konu veya YouTube URL)
-- Seviye dropdown (Başlangıç / Orta / İleri)
-- "Yol Haritası Oluştur" butonu
-- Hardcode popüler roadmap kartları (5-6 adet)
+#### [NEW] Landing Page Bileşenleri
+- `components/landing/Hero.tsx` - Playfair Display başlık + DM Sans alt metin
+- `components/landing/SearchSection.tsx` - TopicInput + LevelSelect + GenerateButton
+- `components/landing/HowItWorks.tsx` - 3 adım açıklama
+- `components/landing/PopularRoadmaps.tsx` - Hardcode kart grid
 
-#### [NEW] `app/r/[slug]/page.tsx` - Roadmap Sayfası
-- SSR: meta taglar, OG image
-- Status polling: generating → spinner, ready → canvas, failed → hata
-- React Flow canvas
-- Video side panel (node tıklama)
-- URL kopyala butonu
+#### [NEW] Shared Bileşenler
+- `components/shared/LoadingOverlay.tsx` - Polling status mesajları
+- `components/shared/ErrorState.tsx` - Hata gösterimi
+- `components/shared/Toast.tsx` - Bildirim (link kopyalandı)
+- `components/shared/NavBar.tsx` - Sticky nav, blur backdrop
 
-#### [NEW] `components/roadmap/RoadmapCanvas.tsx`
-- React Flow wrapper
-- Custom node tipleri: RootNode, CategoryNode, VideoNode, MilestoneNode
-- Zoom, pan, touch desteği
+#### [MOD] Rate limiting + hata yönetimi
+- IP bazlı rate limit middleware
+- Error boundary
+- Responsive kontrol (375px, 768px, 1024px)
 
-#### [NEW] `components/roadmap/VideoNode.tsx`
-- Thumbnail, başlık, kanal, süre, izlenme
-- Tıklanınca VideoPanel açılır
+---
 
-#### [NEW] `components/roadmap/CategoryNode.tsx`
-- Kategori başlığı + ikon
+### Gün 5: Test + Deploy
 
-#### [NEW] `components/roadmap/VideoPanel.tsx`
-- Side panel: video detay
-- YouTube'da İzle butonu
-- AI özeti (varsa)
+#### Manuel test senaryoları
+- "React" konusu ile roadmap oluştur → 15sn içinde 10+ video
+- Node tıkla → Video panel açılsın
+- Chapter collapse/expand çalışsın
+- Slug ile paylaş → başka tarayıcıda aynı roadmap
+- Rate limit test (3. roadmap dene → hata)
+- Mobil responsive test (375px)
+- Lighthouse SEO > 90
 
-#### [NEW] `components/landing/SearchBar.tsx`
-- Konu/URL giriş + seviye dropdown + submit
-
-#### [NEW] `components/shared/LoadingOverlay.tsx`
-- Roadmap oluşturulurken animasyonlu yükleme ekranı
-
-#### [NEW] `app/globals.css`
-- Design system: renkler, tipografi, spacing
-
-#### [NEW] `app/layout.tsx`
-- Root layout, fontlar (Inter), meta taglar
+#### [NEW] Ön-cache + Deploy
+- 5-6 popüler konuyu önceden aratıp cache'le
+- Vercel'e deploy
+- Domain bağlantısı (watchpath.space)
 
 ---
 
 ## Verification Plan
 
-### Otomatik Testler
-```bash
-# Henüz test framework yok, v2'de eklenecek
-# MVP doğrulaması manuel
-```
-
 ### Manuel Doğrulama
+
 | Test | Başarı Kriteri |
 |------|----------------|
-| "React" konusu gir, roadmap oluştur | 15sn içinde 10+ video ile roadmap |
-| Roadmap node'una tıkla | Video panel açılsın, YouTube linki çalışsın |
-| Slug ile roadmap paylaş | Başka tarayıcıda aynı roadmap açılsın |
-| Mobil görünüm (375px) | Responsive, touch zoom/pan çalışsın |
-| Rate limit (3. roadmap dene) | Hata mesajı göster |
-| Gemini timeout simüle et | Fallback roadmap oluşsun |
-| Altyazısız video ile dene | Metadata-only roadmap oluşsun |
-| Lighthouse SEO testi | Skor > 90 |
+| Roadmap generate | 15sn içinde 10+ video ile roadmap |
+| Node tıklama | Video panel açılsın, YouTube linki çalışsın |
+| Chapter collapse | Altındaki node'lar gizlensin/gösterilsin |
+| Slug paylaşımı | Başka tarayıcıda aynı roadmap açılsın |
+| Mobil (375px) | Responsive, pinch zoom çalışsın |
+| Rate limit | 3. roadmap'te hata mesajı |
+| Gemini timeout | Fallback roadmap oluşsun |
+| Altyazısız video | Metadata-only roadmap çalışsın |
+| Lighthouse SEO | Skor > 90 |
+| Design system | Tüm renkler design_system.md ile tutarlı |
