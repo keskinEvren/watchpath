@@ -36,3 +36,16 @@
 .button:hover {
   background: var(--color-hover);
 }
+
+@media (max-width: 768px) {
+  .controls {
+    bottom: 12px;
+    left: 12px;
+  }
+
+  .button {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+}
