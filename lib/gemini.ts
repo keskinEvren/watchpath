@@ -18,8 +18,34 @@ function getClient(): GoogleGenerativeAI {
   return new GoogleGenerativeAI(key);
 }
 
+const MAX_RETRIES = 2;
+
 /**
- * Run a Gemini call with a 30s AbortController timeout.
+ * Parse retryDelay from Gemini 429 error (e.g. "8s" → 8000ms).
+ * Falls back to 10s if unparseable.
+ */
+function parseRetryDelay(err: unknown): number {
+  try {
+    const msg = err instanceof Error ? err.message : String(err);
+    const match = msg.match(/retry in (\d+(?:\.\d+)?)s/i);
+    if (match) return Math.ceil(parseFloat(match[1]) * 1000);
+    const matchMs = msg.match(/retryDelay.*?(\d+)s/i);
+    if (matchMs) return parseInt(matchMs[1], 10) * 1000;
+  } catch { /* ignore */ }
+  return 10_000; // default 10s
+}
+
+function is429Error(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.message.includes('429') || err.message.includes('Too Many Requests');
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Run a Gemini call with 30s timeout per attempt.
+ * Retries up to MAX_RETRIES times on 429 rate limit errors,
+ * waiting the server-suggested retryDelay between attempts.
  */
 async function callGemini(
   prompt: string,
@@ -33,19 +59,35 @@ async function callGemini(
       : undefined,
   });
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let lastError: unknown;
 
-  try {
-    const result = await model.generateContent(
-      { contents: [{ role: 'user', parts: [{ text: prompt }] }] },
-      { signal: controller.signal as AbortSignal }
-    );
-    const text = result.response.text();
-    return text;
-  } finally {
-    clearTimeout(timer);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+    try {
+      const result = await model.generateContent(
+        { contents: [{ role: 'user', parts: [{ text: prompt }] }] },
+        { signal: controller.signal as AbortSignal }
+      );
+      clearTimeout(timer);
+      return result.response.text();
+    } catch (err) {
+      clearTimeout(timer);
+      lastError = err;
+
+      if (is429Error(err) && attempt < MAX_RETRIES) {
+        const delay = parseRetryDelay(err);
+        console.log(`[gemini] 429 rate limited. Retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+        await sleep(delay);
+        continue;
+      }
+
+      throw err;
+    }
   }
+
+  throw lastError;
 }
 
 /**
