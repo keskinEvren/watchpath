@@ -1,0 +1,43 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-16) var(--space-6);
+  gap: var(--space-4);
+}
+
+.icon {
+  font-size: 64px;
+  line-height: 1;
+}
+
+.iconError {
+  composes: icon;
+}
+
+.iconEmpty {
+  composes: icon;
+}
+
+.title {
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--color-ink);
+  letter-spacing: 0.01em;
+}
+
+.message {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-secondary);
+  letter-spacing: 0.01em;
+  max-width: 420px;
+}
+
+.retryButton {
+  margin-top: var(--space-4);
+}
