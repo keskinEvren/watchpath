@@ -18,7 +18,8 @@ function getClient(): GoogleGenerativeAI {
   return new GoogleGenerativeAI(key);
 }
 
-const MAX_RETRIES = 2;
+const MAX_RETRIES = 1;
+const MAX_RETRY_DELAY_MS = 15_000; // Cap at 15s to stay within Vercel timeout
 
 /**
  * Parse retryDelay from Gemini 429 error (e.g. "8s" → 8000ms).
@@ -28,9 +29,9 @@ function parseRetryDelay(err: unknown): number {
   try {
     const msg = err instanceof Error ? err.message : String(err);
     const match = msg.match(/retry in (\d+(?:\.\d+)?)s/i);
-    if (match) return Math.ceil(parseFloat(match[1]) * 1000);
+    if (match) return Math.min(Math.ceil(parseFloat(match[1]) * 1000), MAX_RETRY_DELAY_MS);
     const matchMs = msg.match(/retryDelay.*?(\d+)s/i);
-    if (matchMs) return parseInt(matchMs[1], 10) * 1000;
+    if (matchMs) return Math.min(parseInt(matchMs[1], 10) * 1000, MAX_RETRY_DELAY_MS);
   } catch { /* ignore */ }
   return 10_000; // default 10s
 }

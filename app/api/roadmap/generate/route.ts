@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { createRoadmapRecord, runFullPipeline } from '@/lib/roadmap-generator';
 import type { GenerateRequest, GenerateResponse, ErrorResponse, Level } from '@/types';
 
-// Vercel serverless: allow up to 60s for pipeline (free tier max)
+// Vercel serverless: extend timeout to 60s (Hobby plan max)
 export const maxDuration = 60;
 
 // In-memory rate limiting. Resets when the server restarts.
@@ -61,11 +62,17 @@ export async function POST(request: NextRequest) {
     // Step 1: Create roadmap record (fast DB insert)
     const slug = await createRoadmapRecord(topic, level);
 
-    // Step 2: Run pipeline (awaited - Vercel serverless kills process after response)
-    // Pipeline runs ~15-20s, within Vercel's 60s limit
-    await runFullPipeline(slug, topic, level, language);
+    // Step 2: Run pipeline in background using Next.js after()
+    // after() uses waitUntil on Vercel - keeps function alive after response
+    after(async () => {
+      try {
+        await runFullPipeline(slug, topic, level, language);
+      } catch (err) {
+        console.error('[api/generate] Background pipeline error:', err);
+      }
+    });
 
-    // Step 3: Return slug with final status
+    // Step 3: Return slug immediately (client polls for status)
     const response: GenerateResponse = {
       slug,
       status: 'generating',
