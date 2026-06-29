@@ -6,6 +6,7 @@ import type {
   GeminiRoadmapResponse,
   TranscriptSegment,
   EdgeType,
+  InterviewQuestion,
 } from '@/types';
 import { condenseTranscript } from '@/lib/transcript';
 
@@ -295,4 +296,79 @@ function buildFallbackRoadmap(
     ],
     estimated_total_minutes: totalMinutes,
   };
+}
+
+// ============================================================
+// v2 Gemini Functions
+// ============================================================
+
+/**
+ * Generate topic-specific interview questions using Gemini.
+ * Returns 3 questions with 4 options each.
+ */
+export async function generateDynamicQuestions(
+  topic: string,
+): Promise<InterviewQuestion[]> {
+  const prompt = `Bir kullanıcı "${topic}" konusunu öğrenmek istiyor. Bu kullanıcıya en uygun öğrenme yolunu belirlemek için 3 soru oluştur.
+
+Her soru için:
+- id: "level", "goal", "weakness" (sırayla)
+- question: Türkçe, samimi ton
+- options: 4 seçenek, her birinde value (İngilizce, kısa) ve label (Türkçe)
+
+JSON formatında döndür:
+[
+  {
+    "id": "level",
+    "question": "...",
+    "options": [{"value": "...", "label": "..."}]
+  }
+]
+
+Sadece JSON döndür, başka metin ekleme.`;
+
+  const text = await callGemini(prompt);
+  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const parsed = JSON.parse(cleaned) as InterviewQuestion[];
+
+  // Validate structure
+  if (!Array.isArray(parsed) || parsed.length < 2) {
+    throw new Error('Invalid interview questions format');
+  }
+
+  for (const q of parsed) {
+    if (!q.id || !q.question || !Array.isArray(q.options) || q.options.length < 2) {
+      throw new Error('Invalid question structure');
+    }
+  }
+
+  return parsed;
+}
+
+/**
+ * Generate human-readable names for video clusters.
+ * Cheap Gemini call: just keyword lists -> 2-3 word names.
+ */
+export async function generateClusterNames(
+  clusters: { keywords: string[] }[],
+): Promise<string[]> {
+  const prompt = `Aşağıdaki anahtar kelime gruplarına Türkçe isimler ver. Her grup için 2-3 kelimelik kısa bir başlık.
+
+${clusters.map((c, i) => `Grup ${i + 1}: ${c.keywords.join(', ')}`).join('\n')}
+
+JSON formatında döndür: ["isim1", "isim2", ...]
+Sadece JSON döndür.`;
+
+  try {
+    const text = await callGemini(prompt);
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const names = JSON.parse(cleaned) as string[];
+    if (Array.isArray(names) && names.length === clusters.length) {
+      return names;
+    }
+  } catch {
+    // Fallback: use keywords directly
+  }
+
+  return clusters.map((c) => c.keywords.slice(0, 3).join(' / ') || 'Genel');
 }
