@@ -13,7 +13,7 @@ import type {
 } from '@/types';
 import { condenseTranscript } from '@/lib/transcript';
 
-const MODEL_NAME = 'gemini-3.5-flash';
+const MODEL_NAME = 'gemini-3.1-flash-lite';
 const TIMEOUT_MS = 45_000;
 
 function getClient(): GoogleGenerativeAI {
@@ -48,9 +48,8 @@ function is429Error(err: unknown): boolean {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Run a Gemini call with 30s timeout per attempt.
- * Retries up to MAX_RETRIES times on 429 rate limit errors,
- * waiting the server-suggested retryDelay between attempts.
+ * Run a Gemini call with timeout per attempt.
+ * Uses gemini-3.1-flash-lite: non-thinking model, no thinking token costs.
  */
 async function callGemini(
   prompt: string,
@@ -59,11 +58,9 @@ async function callGemini(
   const client = getClient();
   const model = client.getGenerativeModel({
     model: MODEL_NAME,
-    generationConfig: {
-      ...(jsonSchema ? { responseMimeType: 'application/json' } : {}),
-      // @ts-expect-error - thinkingConfig not yet in SDK types
-      thinkingConfig: { thinkingBudget: 0 },
-    },
+    generationConfig: jsonSchema
+      ? { responseMimeType: 'application/json' }
+      : undefined,
   });
 
   let lastError: unknown;

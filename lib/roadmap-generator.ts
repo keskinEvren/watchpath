@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { generateSlug } from '@/lib/utils';
-import { generateSearchTerms, generateCurriculumTree } from '@/lib/gemini';
+import { generateCurriculumTree } from '@/lib/gemini';
+import { getCachedCurriculum, setCachedCurriculum } from '@/lib/cache';
 import { searchVideos, getVideoDetails } from '@/lib/youtube';
 import { getTranscript, condenseTranscript } from '@/lib/transcript';
 import { calculateQualityScore, extractKeywords } from '@/lib/engine/quality';
@@ -94,9 +95,22 @@ async function runCurriculumPipeline(
   const profile = buildProfileFromAnswers(topic, answers);
   console.log(`[pipeline] Profile: level=${profile.level}, goal=${profile.goal}`);
 
-  // Step 2: Generate curriculum tree
-  console.log('[pipeline] Generating curriculum tree...');
-  const tree = await generateCurriculumTree(topic, profile, language);
+  // Step 2: Generate curriculum tree (cache-first)
+  const levelBucket = profile.level < 0.3 ? 'beginner'
+    : profile.level < 0.6 ? 'intermediate'
+    : 'advanced';
+
+  let tree = await getCachedCurriculum(topic, levelBucket);
+  if (tree) {
+    console.log('[pipeline] Using cached curriculum tree');
+  } else {
+    console.log('[pipeline] Generating curriculum tree via Gemini...');
+    tree = await generateCurriculumTree(topic, profile, language);
+    // Cache for next time (fire-and-forget)
+    setCachedCurriculum(topic, levelBucket, tree).catch((err) =>
+      console.error('[pipeline] Failed to cache curriculum:', err)
+    );
+  }
   const categories = tree.nodes.filter((n) => n.nodeType === 'category');
   const topics = tree.nodes.filter((n) => n.nodeType === 'topic');
   console.log(`[pipeline] Tree: ${categories.length} categories, ${topics.length} topics`);
