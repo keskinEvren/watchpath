@@ -2,21 +2,59 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Level } from '@/types';
+import type { InterviewQuestion } from '@/types';
+import InterviewModal from './InterviewModal';
 import styles from './SearchSection.module.css';
 
 export default function SearchSection() {
   const router = useRouter();
   const [topic, setTopic] = useState('');
-  const [level, setLevel] = useState<Level>('beginner');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Interview state
+  const [showInterview, setShowInterview] = useState(false);
+  const [interviewQuestions, setInterviewQuestions] = useState<InterviewQuestion[]>([]);
+  const [interviewLoading, setInterviewLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = topic.trim();
     if (!trimmed) return;
 
+    setInterviewLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/interview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: trimmed }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        if (res.status === 429) {
+          setError('Çok fazla istek gönderildi. Lütfen biraz bekleyin.');
+        } else {
+          setError(data?.error || 'Bir şeyler ters gitti. Tekrar deneyin.');
+        }
+        return;
+      }
+
+      const data = await res.json();
+      setInterviewQuestions(data.questions);
+      setShowInterview(true);
+    } catch {
+      setError('Bağlantı hatası. İnternet bağlantınızı kontrol edin.');
+    } finally {
+      setInterviewLoading(false);
+    }
+  }
+
+  async function handleInterviewSubmit(answers: Record<string, string>) {
+    const trimmed = topic.trim();
+    setShowInterview(false);
     setLoading(true);
     setError(null);
 
@@ -24,7 +62,7 @@ export default function SearchSection() {
       const res = await fetch('/api/roadmap/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: trimmed, level }),
+        body: JSON.stringify({ topic: trimmed, level: 'beginner', answers }),
       });
 
       if (!res.ok) {
@@ -46,6 +84,13 @@ export default function SearchSection() {
     }
   }
 
+  function handleInterviewCancel() {
+    setShowInterview(false);
+    setInterviewQuestions([]);
+  }
+
+  const isDisabled = loading || interviewLoading || !topic.trim();
+
   return (
     <section className={styles.section} id="search-section">
       <form className={styles.form} onSubmit={handleSubmit} id="search-form">
@@ -56,36 +101,36 @@ export default function SearchSection() {
             placeholder="React, Python, İngilizce A2..."
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            disabled={loading}
+            disabled={loading || interviewLoading}
             id="search-topic-input"
             aria-label="Konu"
           />
-          <select
-            className={styles.levelSelect}
-            value={level}
-            onChange={(e) => setLevel(e.target.value as Level)}
-            disabled={loading}
-            id="search-level-select"
-            aria-label="Seviye"
-          >
-            <option value="beginner">Başlangıç</option>
-            <option value="intermediate">Orta</option>
-            <option value="advanced">İleri</option>
-          </select>
         </div>
         <button
           className={`btn btn-primary ${styles.submitButton}`}
           type="submit"
-          disabled={loading || !topic.trim()}
+          disabled={isDisabled}
           id="search-submit-button"
         >
-          {loading ? 'Oluşturuluyor...' : 'Yol Haritası Oluştur'}
+          {interviewLoading
+            ? 'Sorular hazırlanıyor...'
+            : loading
+              ? 'Oluşturuluyor...'
+              : 'Başlayalım'}
         </button>
       </form>
       {error && (
         <p className={styles.error} id="search-error" role="alert">
           {error}
         </p>
+      )}
+      {showInterview && (
+        <InterviewModal
+          topic={topic.trim()}
+          questions={interviewQuestions}
+          onSubmit={handleInterviewSubmit}
+          onCancel={handleInterviewCancel}
+        />
       )}
     </section>
   );
