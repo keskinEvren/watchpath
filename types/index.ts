@@ -285,3 +285,38 @@ export interface ProcessedRoadmap {
   totalVideos: number;
   totalMinutes: number;
 }
+
+// ---- Curriculum-First Types (v3) ----
+
+export type CurriculumNodeType = 'category' | 'topic';
+export type CurriculumImportance = 'required' | 'recommended' | 'optional';
+
+export interface CurriculumNode {
+  id: string;                          // "hooks-usestate"
+  name: string;                        // "useState"
+  description: string;                 // "React'te state yönetimi"
+  parentId: string | null;             // null = root child, "hooks" = sub-node
+  order: number;
+  importance: CurriculumImportance;
+  searchTerms: string[];               // YouTube search terms for this node
+  nodeType: CurriculumNodeType;        // category = branch head, topic = leaf
+}
+
+export interface CurriculumTree {
+  topic: string;
+  nodes: CurriculumNode[];
+  totalEstimatedHours: number;
+}
+
+export interface CurriculumNodeWithVideos extends CurriculumNode {
+  videos: ScoredVideo[];               // best 1-3 matched videos
+}
+
+export interface ProcessedCurriculum {
+  tree: CurriculumTree;
+  nodesWithVideos: CurriculumNodeWithVideos[];
+  profile: UserProfile;
+  totalVideos: number;
+  totalMinutes: number;
+}
+

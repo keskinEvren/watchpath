@@ -7,6 +7,9 @@ import type {
   TranscriptSegment,
   EdgeType,
   InterviewQuestion,
+  CurriculumTree,
+  CurriculumNode,
+  UserProfile,
 } from '@/types';
 import { condenseTranscript } from '@/lib/transcript';
 
@@ -371,4 +374,80 @@ Sadece JSON döndür.`;
   }
 
   return clusters.map((c) => c.keywords.slice(0, 3).join(' / ') || 'Genel');
+}
+
+/**
+ * Generate a curriculum tree (roadmap.sh style) for a topic.
+ * Returns a hierarchical tree of categories and topics with YouTube search terms.
+ */
+export async function generateCurriculumTree(
+  topic: string,
+  profile: UserProfile,
+  language: string = 'tr',
+): Promise<CurriculumTree> {
+  const levelDesc = profile.level < 0.3 ? 'başlangıç'
+    : profile.level < 0.6 ? 'orta'
+    : 'ileri';
+
+  const prompt = `"${topic}" konusu için detaylı bir öğrenme yol haritası (roadmap) oluştur.
+
+Kullanıcı bilgileri:
+- Seviye: ${levelDesc}
+- Hedef: ${profile.goal}
+- Zorlandığı alan: ${profile.weakness}
+
+Kurallar:
+1. 4-8 ana kategori (dal) oluştur. Her kategori bir öğrenme alanını temsil eder.
+2. Her kategorinin altında 2-6 alt konu (yaprak node) olsun.
+3. Toplam 20-40 node hedefle.
+4. Her node için:
+   - id: kebab-case benzersiz ID (örn: "hooks-usestate")
+   - name: Kısa başlık (örn: "useState")
+   - description: 1 cümlelik açıklama
+   - parentId: üst kategori ID'si (ana kategoriler için null)
+   - order: sıra numarası (0'dan başla)
+   - importance: "required" (olmazsa olmaz), "recommended" (önerilen), "optional" (isteğe bağlı)
+   - searchTerms: Bu konuyu anlatan YouTube videosu bulmak için 2-3 arama terimi (${language === 'tr' ? 'Türkçe' : 'İngilizce'})
+   - nodeType: "category" (ana dal) veya "topic" (yaprak konu)
+5. ${levelDesc} seviyesi için ileri konuları "optional" yap.
+6. Konular mantıklı sırada olsun (temelden ileriye).
+7. searchTerms gerçekçi olsun, YouTube'da bulunabilecek terimler.
+
+Örnek yapı (React için):
+- Components (category) -> JSX (topic), Props (topic), State (topic)
+- Hooks (category) -> useState (topic), useEffect (topic)
+
+JSON formatında döndür:
+{
+  "topic": "${topic}",
+  "nodes": [...],
+  "totalEstimatedHours": <sayı>
+}
+
+Sadece JSON döndür, başka metin ekleme.`;
+
+  const text = await callGemini(prompt);
+  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const parsed = JSON.parse(cleaned) as CurriculumTree;
+
+  // Validate
+  if (!parsed.nodes || !Array.isArray(parsed.nodes) || parsed.nodes.length < 5) {
+    throw new Error(`Invalid curriculum tree: got ${parsed.nodes?.length ?? 0} nodes, need at least 5`);
+  }
+
+  // Ensure all nodes have required fields
+  for (const node of parsed.nodes) {
+    if (!node.id || !node.name || !node.nodeType) {
+      throw new Error(`Invalid node: missing id, name, or nodeType`);
+    }
+    if (!node.searchTerms || node.searchTerms.length === 0) {
+      node.searchTerms = [`${topic} ${node.name} ${language === 'tr' ? 'ders' : 'tutorial'}`];
+    }
+    if (!node.importance) {
+      node.importance = 'recommended';
+    }
+  }
+
+  parsed.topic = topic;
+  return parsed;
 }
