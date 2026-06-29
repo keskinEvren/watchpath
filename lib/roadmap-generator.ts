@@ -107,19 +107,28 @@ async function runCurriculumPipeline(
   const allVideoIds = new Set<string>();
 
   // Collect all unique search terms, grouped by node
+  const eduSuffix = language === 'tr' ? 'ders eğitim anlatım' : 'tutorial course lesson';
   for (const node of topics) {
-    const term = node.searchTerms[0] ?? `${topic} ${node.name} ${language === 'tr' ? 'ders' : 'tutorial'}`;
+    const rawTerm = node.searchTerms[0] ?? `${topic} ${node.name}`;
+    // Append educational keywords to push results toward lectures, not entertainment
+    const term = `${rawTerm} ${eduSuffix}`;
 
     try {
-      const results = await searchVideos(term, 8, language);
+      const results = await searchVideos(term, 10, language);
       const newIds = results
         .map((r) => r.videoId)
         .filter((id) => !allVideoIds.has(id));
 
       if (newIds.length > 0) {
         const details = await getVideoDetails(newIds);
-        nodeVideos.set(node.id, details);
-        for (const id of newIds) allVideoIds.add(id);
+        // Filter: minimum 2 minutes (short clips are rarely educational)
+        const filtered = details.filter(
+          (v) => v.duration_seconds !== null && v.duration_seconds >= 120,
+        );
+        if (filtered.length > 0) {
+          nodeVideos.set(node.id, filtered);
+          for (const v of filtered) allVideoIds.add(v.youtube_id);
+        }
       }
     } catch (err) {
       console.log(`[pipeline] Search failed for "${node.name}":`, err);
@@ -154,7 +163,7 @@ async function runCurriculumPipeline(
   }
   console.log(`[pipeline] Transcripts: ${transcripts.size}/${uniqueVideos.length}`);
 
-  // Step 6: Score and match best videos per node
+  // Step 6: Score and match best videos per node (with relevance filtering)
   console.log('[pipeline] Matching videos to nodes...');
   const nodesWithVideos: CurriculumNodeWithVideos[] = tree.nodes.map((node) => {
     if (node.nodeType === 'category') {
@@ -162,7 +171,7 @@ async function runCurriculumPipeline(
     }
 
     const candidates = nodeVideos.get(node.id) ?? [];
-    const scored = scoreAndRank(candidates, transcripts);
+    const scored = scoreAndRank(candidates, transcripts, node.name, topic);
     const best = scored.slice(0, 3); // top 3 per node
 
     return { ...node, videos: best };
@@ -196,17 +205,43 @@ async function runCurriculumPipeline(
 function scoreAndRank(
   videos: Video[],
   transcripts: Map<string, string>,
+  nodeName: string = '',
+  rootTopic: string = '',
 ): ScoredVideo[] {
   if (videos.length === 0) return [];
 
+  // Build relevance keywords from node name + root topic
+  const relevanceWords = `${nodeName} ${rootTopic}`
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+
   const scored: ScoredVideo[] = videos.map((video) => {
     const transcript = transcripts.get(video.youtube_id) ?? null;
-    const qualityScore = calculateQualityScore(video, transcript);
+    let qualityScore = calculateQualityScore(video, transcript);
     const keywords = extractKeywords(
       transcript ?? `${video.title} ${video.description ?? ''}`,
       15,
     );
     const bloomLevel = classifyBloomLevel(transcript, video.title);
+
+    // Title relevance bonus/penalty
+    const titleLower = video.title.toLowerCase();
+    const descLower = (video.description ?? '').toLowerCase();
+    const titleAndDesc = `${titleLower} ${descLower}`;
+
+    // Count how many relevance words appear in title+description
+    const matchCount = relevanceWords.filter((w) => titleAndDesc.includes(w)).length;
+    const relevanceRatio = relevanceWords.length > 0 ? matchCount / relevanceWords.length : 0;
+
+    // Penalty for low relevance (< 30% match = halve score)
+    if (relevanceRatio < 0.3) {
+      qualityScore *= 0.3;
+    } else if (relevanceRatio < 0.5) {
+      qualityScore *= 0.6;
+    } else {
+      qualityScore *= (0.7 + relevanceRatio * 0.3); // bonus for high relevance
+    }
 
     return {
       video,

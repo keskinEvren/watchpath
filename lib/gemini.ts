@@ -13,7 +13,7 @@ import type {
 } from '@/types';
 import { condenseTranscript } from '@/lib/transcript';
 
-const MODEL_NAME = 'gemini-2.0-flash';
+const MODEL_NAME = 'gemini-3.5-flash';
 const TIMEOUT_MS = 45_000;
 
 function getClient(): GoogleGenerativeAI {
@@ -59,9 +59,11 @@ async function callGemini(
   const client = getClient();
   const model = client.getGenerativeModel({
     model: MODEL_NAME,
-    generationConfig: jsonSchema
-      ? { responseMimeType: 'application/json' }
-      : undefined,
+    generationConfig: {
+      ...(jsonSchema ? { responseMimeType: 'application/json' } : {}),
+      // @ts-expect-error - thinkingConfig not yet in SDK types
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   });
 
   let lastError: unknown;
