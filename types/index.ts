@@ -6,9 +6,11 @@
 // ---- Database Models ----
 
 export type RoadmapStatus = 'generating' | 'ready' | 'failed';
-export type NodeType = 'root' | 'category' | 'video' | 'milestone';
+export type NodeType = 'root' | 'category' | 'video' | 'milestone' | 'series';
 export type EdgeType = 'prerequisite' | 'related' | 'optional';
 export type Level = 'beginner' | 'intermediate' | 'advanced';
+export type BranchWeight = 'recommended' | 'optional' | 'neutral';
+export type BloomLevel = 1 | 2 | 3 | 4 | 5;
 
 export interface Video {
   id: string;
@@ -102,6 +104,7 @@ export interface GenerateRequest {
   topic: string;
   level: Level;
   language?: string;
+  answers?: Record<string, string>; // interview answers
 }
 
 export interface GenerateResponse {
@@ -127,9 +130,11 @@ export interface ErrorResponse {
 // ---- Pipeline Types ----
 
 export type PipelineStatus =
+  | 'interviewing'
   | 'searching'
   | 'found_videos'
   | 'fetching_transcripts'
+  | 'processing'
   | 'analyzing'
   | 'ready'
   | 'failed';
@@ -206,4 +211,77 @@ export interface VideoNodeData {
 export interface MilestoneNodeData {
   label: string;
   nextChapter?: string;
+}
+
+export interface SeriesNodeData {
+  seriesName: string;
+  channelName: string;
+  episodeCount: number;
+  totalMinutes: number;
+  health: number;
+  videos: Video[];
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+}
+
+// ---- Interview Types ----
+
+export interface InterviewQuestion {
+  id: string;
+  question: string;
+  options: { value: string; label: string }[];
+}
+
+export interface InterviewResponse {
+  questions: InterviewQuestion[];
+}
+
+export interface UserProfile {
+  topic: string;
+  level: number;           // 0-1 (0=sıfır, 1=ileri)
+  goal: string;            // interview'dan gelen hedef
+  weakness: string;        // interview'dan gelen zayıf alan
+  answers: Record<string, string>;
+}
+
+// ---- Engine Types (v2 Processing Pipeline) ----
+
+export interface ScoredVideo {
+  video: Video;
+  transcript: string | null;  // condensed transcript text
+  qualityScore: number;       // 0-100
+  bloomLevel: BloomLevel;     // 1-5
+  keywords: string[];         // top extracted keywords
+  seriesKey: string | null;   // channel:series_name if part of series
+  episodeNumber: number | null;
+}
+
+export interface DetectedSeries {
+  key: string;                // channel_id:series_name
+  name: string;
+  channelName: string;
+  episodes: Map<number, ScoredVideo>;
+  health: number;             // 0-1
+  totalMinutes: number;
+}
+
+export interface VideoCluster {
+  id: string;
+  name: string;               // auto-generated or Gemini-named
+  keywords: string[];          // top cluster keywords
+  videos: ScoredVideo[];
+  weight: BranchWeight;        // recommended / optional / neutral
+}
+
+export interface OrderedVideo extends ScoredVideo {
+  orderIndex: number;
+  prerequisiteIds: string[];   // youtube_ids this video depends on
+}
+
+export interface ProcessedRoadmap {
+  clusters: VideoCluster[];
+  series: DetectedSeries[];
+  profile: UserProfile;
+  totalVideos: number;
+  totalMinutes: number;
 }

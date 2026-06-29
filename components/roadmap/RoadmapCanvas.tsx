@@ -37,6 +37,7 @@ const NODE_DIMENSIONS: Record<NodeType, { width: number; height: number }> = {
   category: { width: 240, height: 80 },
   video: { width: 280, height: 100 },
   milestone: { width: 220, height: 60 },
+  series: { width: 300, height: 110 },
 };
 
 function layoutNodes(
