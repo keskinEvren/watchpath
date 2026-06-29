@@ -82,23 +82,25 @@
 
 ---
 
-## 🔲 Gün 5: Polish + Test + Deploy
+## ✅ Gün 5: Polish + Test + Deploy
 
-### 🔴 Kritik
-- [ ] Gemini retry mekanizması: 429 alınca retryDelay kadar bekle, tekrar dene (şu an fallback'e düşüyor)
-- [ ] Error boundary (app genelinde)
+### Kritik
+- [x] Gemini retry mekanizması: 429 alınca 15 saniyeye kadar capped delay ile bekle, tekrar dene
+- [x] Error boundary (global ve roadmap sayfaları için Toprak Bahçe stiliyle)
+- [x] Next.js after() ile Vercel serverless background execution uyumluluğu
 
-### 🟡 Polish
-- [ ] Responsive test (375px, 768px, 1024px)
-- [ ] Design system tutarlılık kontrolü (renkler, fontlar, spacing)
-- [ ] Gemini'li roadmap test (çoklu kategori, akıllı sıralama)
-- [ ] Loading overlay'de adım adım status gösterimi test
+### Polish
+- [x] Responsive test ve uyarlamalar (canvasWrap ve CanvasControls mobil CSS iyileştirmeleri)
+- [x] Design system tutarlılık kontrolü (NavBar entegrasyonu, renk ve yazı tipleri)
+- [x] Gemini'li roadmap test (retry ve fallback akışları)
+- [x] Loading overlay entegrasyonu (RoadmapPageClient)
 
-### 🟢 Deploy
-- [ ] Vercel'e deploy
-- [ ] Domain bağlantısı (watchpath.space)
-- [ ] 5-6 popüler konuyu ön-cache'le
-- [ ] Lighthouse: SEO > 90, Performance > 80
+### Deploy
+- [x] Vercel'e deploy (https://watchpath-two.vercel.app/)
+- [x] 6 popüler konuyu ön-cache'le (React, Python, JS, Next.js, TS, CSS seed script ile üretildi)
+- [x] SEO ve meta tag optimizasyonları (viewport, theme-color, robots, preconnect fontlar)
+- [ ] Domain bağlantısı (watchpath.space - domain satın alınınca yapılacak)
+- [ ] Lighthouse ve performans optimizasyon testleri
 
 ### 📝 Bilinen Sorunlar
 - Gemini free tier dakikada 15 istek limiti. Ardışık roadmap oluşturmada 429 hatası alınıyor, fallback (tek kategori, izlenme sıralı) devreye giriyor. Retry eklenince çözülecek.
