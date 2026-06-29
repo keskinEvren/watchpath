@@ -14,7 +14,7 @@ import type {
 import { condenseTranscript } from '@/lib/transcript';
 
 const MODEL_NAME = 'gemini-2.0-flash';
-const TIMEOUT_MS = 30_000;
+const TIMEOUT_MS = 45_000;
 
 function getClient(): GoogleGenerativeAI {
   const key = process.env.GEMINI_API_KEY;
@@ -22,8 +22,8 @@ function getClient(): GoogleGenerativeAI {
   return new GoogleGenerativeAI(key);
 }
 
-const MAX_RETRIES = 1;
-const MAX_RETRY_DELAY_MS = 15_000; // Cap at 15s to stay within Vercel timeout
+const MAX_RETRIES = 3;
+const MAX_RETRY_DELAY_MS = 60_000; // Allow longer waits for rate limits
 
 /**
  * Parse retryDelay from Gemini 429 error (e.g. "8s" → 8000ms).

@@ -101,9 +101,21 @@ export default function RoadmapPageClient({ slug }: Props) {
           <p style={errorBodyStyle}>
             {error ?? 'Yol haritası oluşturulurken bir hata oluştu.'}
           </p>
-          <button onClick={fetchRoadmap} style={ctaBtnStyle}>
-            Tekrar Dene
-          </button>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <a href="/" style={ctaBtnStyle}>
+              Yeni Arama Yap
+            </a>
+            <button
+              onClick={() => {
+                setStatus('loading');
+                setError(null);
+                fetchRoadmap();
+              }}
+              style={{ ...ctaBtnStyle, background: '#57534e' }}
+            >
+              Tekrar Kontrol Et
+            </button>
+          </div>
         </div>
       </div>
     );
