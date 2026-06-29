@@ -1,29 +1,24 @@
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { generateSlug } from '@/lib/utils';
-import { generateSearchTerms, generateRoadmapStructure } from '@/lib/gemini';
+import { generateSearchTerms, generateClusterNames } from '@/lib/gemini';
 import { searchVideos, getVideoDetails } from '@/lib/youtube';
-import { getTranscript } from '@/lib/transcript';
+import { getTranscript, condenseTranscript } from '@/lib/transcript';
+import { processVideos } from '@/lib/engine';
+import { buildProfileFromAnswers } from '@/lib/interview';
 import type {
   Level,
   Video,
-  TranscriptSegment,
   RoadmapEdge,
-  GeminiRoadmapResponse,
+  ProcessedRoadmap,
+  UserProfile,
 } from '@/types';
 
 const NODE_X_START = 0;
 const NODE_Y_GAP = 150;
 const CATEGORY_X_OFFSET = 0;
 const VIDEO_X_OFFSET = 50;
+const BRANCH_X_GAP = 400; // Horizontal gap between branches
 
-/**
- * Main pipeline orchestrator.
- * Creates roadmap record, runs the full pipeline, writes results to DB.
- * Returns the slug for client polling.
- *
- * This runs synchronously inside a single serverless function call.
- * The client polls GET /api/roadmap/[slug] to see when status flips to "ready".
- */
 /**
  * Creates the roadmap DB record and returns the slug.
  * Call this first, then fire runFullPipeline() without awaiting.
@@ -61,10 +56,11 @@ export async function runFullPipeline(
   slug: string,
   topic: string,
   level: Level,
-  language: string = 'tr'
+  language: string = 'tr',
+  answers: Record<string, string> = {},
 ): Promise<void> {
   try {
-    await runPipeline(slug, topic, level, language);
+    await runPipelineV2(slug, topic, level, language, answers);
   } catch (err) {
     console.error('[pipeline] Pipeline failed:', err);
     await supabaseAdmin
@@ -74,22 +70,39 @@ export async function runFullPipeline(
   }
 }
 
-async function runPipeline(
+/**
+ * v2 Pipeline: Interview-driven, engine-processed, multi-branch roadmaps.
+ *
+ * Flow:
+ * 1. Build user profile from interview answers
+ * 2. Generate search terms (Gemini)
+ * 3. Search YouTube (15 per term, more coverage)
+ * 4. Get video details + transcripts
+ * 5. Run local engine (score, dedup, cluster, order, profile)
+ * 6. Name clusters (Gemini, cheap)
+ * 7. Save multi-branch DAG to DB
+ */
+async function runPipelineV2(
   slug: string,
   topic: string,
   level: Level,
-  language: string
+  language: string,
+  answers: Record<string, string>,
 ): Promise<void> {
-  // Step 2: Get search terms from Gemini
+  // Step 1: Build user profile from interview answers
+  const profile = buildProfileFromAnswers(topic, answers);
+  console.log(`[pipeline] Profile: level=${profile.level}, goal=${profile.goal}, weakness=${profile.weakness}`);
+
+  // Step 2: Generate search terms from Gemini
   console.log('[pipeline] Generating search terms...');
   const searchTerms = await generateSearchTerms(topic, level, language);
   console.log(`[pipeline] Got ${searchTerms.length} search terms:`, searchTerms);
 
-  // Step 3: Search YouTube for each term
+  // Step 3: Search YouTube for each term (more results for better coverage)
   console.log('[pipeline] Searching YouTube...');
   const allSearchResults = [];
   for (const term of searchTerms) {
-    const results = await searchVideos(term, 10, language);
+    const results = await searchVideos(term, 15, language);
     allSearchResults.push(...results);
   }
 
@@ -102,7 +115,7 @@ async function runPipeline(
   });
 
   console.log(
-    `[pipeline] Found ${allSearchResults.length} results, ${uniqueResults.length} unique`
+    `[pipeline] Found ${allSearchResults.length} results, ${uniqueResults.length} unique`,
   );
 
   if (uniqueResults.length === 0) {
@@ -117,37 +130,48 @@ async function runPipeline(
   // Step 5: Upsert videos into DB (cache them)
   const upsertedVideos = await upsertVideos(videos);
 
-  // Step 6: Fetch transcripts for top videos (by view count, limit to 10 to save time)
-  console.log('[pipeline] Fetching transcripts...');
-  const topVideos = [...videos]
-    .sort((a, b) => b.view_count - a.view_count)
-    .slice(0, 10);
+  // Step 6: Fetch transcripts for ALL videos (parallel, with error tolerance)
+  console.log('[pipeline] Fetching transcripts for all videos...');
+  const transcripts = new Map<string, string>();
 
-  const transcripts = new Map<string, TranscriptSegment[]>();
-  const transcriptPromises = topVideos.map(async (v) => {
-    const segments = await getTranscript(v.youtube_id);
-    if (segments) {
-      transcripts.set(v.youtube_id, segments);
+  const transcriptResults = await Promise.allSettled(
+    videos.map(async (v) => {
+      const segments = await getTranscript(v.youtube_id);
+      if (segments && segments.length > 0) {
+        const text = condenseTranscript(segments, 5000);
+        return { youtubeId: v.youtube_id, text };
+      }
+      return null;
+    }),
+  );
+
+  for (const result of transcriptResults) {
+    if (result.status === 'fulfilled' && result.value) {
+      transcripts.set(result.value.youtubeId, result.value.text);
     }
-  });
-  await Promise.all(transcriptPromises);
-  console.log(`[pipeline] Got transcripts for ${transcripts.size} videos`);
+  }
+  console.log(`[pipeline] Got transcripts for ${transcripts.size}/${videos.length} videos`);
 
-  // Step 7: Generate roadmap structure with Gemini
-  console.log('[pipeline] Generating roadmap structure with Gemini...');
-  const structure = await generateRoadmapStructure(
-    topic,
-    level,
-    videos,
-    transcripts
-  );
+  // Step 7: Run local engine (zero Gemini calls)
+  console.log('[pipeline] Running v2 engine...');
+  const processed = processVideos(videos, transcripts, profile);
   console.log(
-    `[pipeline] Roadmap: ${structure.categories.length} categories, ${structure.nodes.length} nodes`
+    `[pipeline] Engine: ${processed.clusters.length} clusters, ${processed.totalVideos} videos, ${processed.totalMinutes} min`,
   );
 
-  // Step 8: Save nodes and edges to DB
-  await saveRoadmapData(slug, topic, level, structure, upsertedVideos);
+  // Step 8: Name clusters with Gemini (cheap call, just keywords -> names)
+  try {
+    const clusterNames = await generateClusterNames(processed.clusters);
+    processed.clusters.forEach((c, i) => {
+      c.name = clusterNames[i] ?? c.name;
+    });
+    console.log(`[pipeline] Cluster names: ${processed.clusters.map((c) => c.name).join(', ')}`);
+  } catch (err) {
+    console.log('[pipeline] Cluster naming failed, using keyword names:', err);
+  }
 
+  // Step 9: Save multi-branch DAG to DB
+  await saveRoadmapDataV2(slug, topic, level, processed, upsertedVideos);
   console.log(`[pipeline] Roadmap "${slug}" is ready`);
 }
 
@@ -155,7 +179,7 @@ async function runPipeline(
  * Upsert videos into the videos table. Returns a map of youtube_id -> db uuid.
  */
 async function upsertVideos(
-  videos: Video[]
+  videos: Video[],
 ): Promise<Map<string, string>> {
   const videoMap = new Map<string, string>();
 
@@ -177,7 +201,7 @@ async function upsertVideos(
           published_at: video.published_at,
           fetched_at: video.fetched_at,
         },
-        { onConflict: 'youtube_id' }
+        { onConflict: 'youtube_id' },
       )
       .select('id, youtube_id')
       .single();
@@ -185,7 +209,7 @@ async function upsertVideos(
     if (error) {
       console.error(
         `[pipeline] Failed to upsert video ${video.youtube_id}:`,
-        error.message
+        error.message,
       );
       continue;
     }
@@ -199,17 +223,34 @@ async function upsertVideos(
 }
 
 /**
- * Convert Gemini's roadmap structure into DB rows (roadmap_nodes + edges_data).
+ * Save the v2 ProcessedRoadmap as a multi-branch DAG to the database.
+ *
+ * Layout:
+ * - Root node at center top
+ * - Each cluster branches out horizontally as a category node
+ * - Videos chain vertically within each branch
+ * - Series are grouped as series nodes
  */
-async function saveRoadmapData(
+async function saveRoadmapDataV2(
   slug: string,
   topic: string,
   level: Level,
-  structure: GeminiRoadmapResponse,
-  videoMap: Map<string, string>
+  processed: ProcessedRoadmap,
+  videoMap: Map<string, string>,
 ): Promise<void> {
+  // Get roadmap ID
+  const { data: roadmap } = await supabaseAdmin
+    .from('roadmaps')
+    .select('id')
+    .eq('slug', slug)
+    .single();
+
+  if (!roadmap) throw new Error('Roadmap not found after insert');
+
+  const roadmapId = roadmap.id;
+
   const nodes: Array<{
-    roadmap_id?: string;
+    roadmap_id: string;
     video_id: string | null;
     node_type: string;
     label: string;
@@ -220,22 +261,7 @@ async function saveRoadmapData(
     metadata: Record<string, unknown>;
   }> = [];
 
-  // We need the roadmap ID
-  const { data: roadmap } = await supabaseAdmin
-    .from('roadmaps')
-    .select('id')
-    .eq('slug', slug)
-    .single();
-
-  if (!roadmap) throw new Error('Roadmap not found after insert');
-
-  const roadmapId = roadmap.id;
-  let yPos = 0;
   let orderIndex = 0;
-
-  // Node ID map: youtube_id -> generated node uuid (for edges)
-  // We'll use a temp ID scheme and let DB assign real UUIDs
-  const nodeIdMap = new Map<string, string>(); // youtube_id -> temp_id
 
   // Root node
   nodes.push({
@@ -243,95 +269,91 @@ async function saveRoadmapData(
     video_id: null,
     node_type: 'root',
     label: topic,
-    description: `${level} level learning path`,
+    description: `${processed.profile.goal} - ${level}`,
     position_x: NODE_X_START,
-    position_y: yPos,
+    position_y: 0,
     order_index: orderIndex++,
     metadata: {
-      total_duration_minutes: structure.estimated_total_minutes,
-      total_videos: structure.nodes.length,
+      total_duration_minutes: processed.totalMinutes,
+      total_videos: processed.totalVideos,
     },
   });
-  yPos += NODE_Y_GAP;
 
-  // Process each category
-  for (const category of structure.categories.sort(
-    (a, b) => a.order - b.order
-  )) {
-    // Category node
-    const categoryVideos = structure.nodes.filter(
-      (n) => n.category === category.name
+  // Each cluster becomes a category (branch) node
+  const totalBranches = processed.clusters.length;
+  const startX = -((totalBranches - 1) * BRANCH_X_GAP) / 2;
+
+  for (let branchIdx = 0; branchIdx < processed.clusters.length; branchIdx++) {
+    const cluster = processed.clusters[branchIdx];
+    const branchX = startX + branchIdx * BRANCH_X_GAP;
+    let yPos = NODE_Y_GAP;
+
+    // Category (branch) node
+    const clusterMinutes = cluster.videos.reduce(
+      (sum, sv) => sum + (sv.video.duration_seconds ?? 0) / 60,
+      0,
     );
-    const categoryMinutes = categoryVideos.reduce((sum, n) => {
-      const vid = Array.from(videoMap.entries()).find(
-        ([ytId]) => ytId === n.youtube_id
-      );
-      return sum + (vid ? 0 : 0); // Will be calculated from actual video data
-    }, 0);
 
     nodes.push({
       roadmap_id: roadmapId,
       video_id: null,
       node_type: 'category',
-      label: category.name,
-      description: category.description,
-      position_x: NODE_X_START + CATEGORY_X_OFFSET,
+      label: cluster.name,
+      description: `${cluster.videos.length} video · ${Math.round(clusterMinutes)} dk`,
+      position_x: branchX + CATEGORY_X_OFFSET,
       position_y: yPos,
       order_index: orderIndex++,
       metadata: {
-        category_name: category.name,
-        video_count: categoryVideos.length,
-        estimated_minutes: categoryMinutes,
+        category_name: cluster.name,
+        video_count: cluster.videos.length,
+        estimated_minutes: Math.round(clusterMinutes),
         is_collapsed: false,
+        branch_weight: cluster.weight,
+        cluster_keywords: cluster.keywords,
       },
     });
     yPos += NODE_Y_GAP;
 
-    // Video nodes in this category
-    const sortedVideos = categoryVideos.sort((a, b) => a.order - b.order);
-    for (const videoNode of sortedVideos) {
-      const dbVideoId = videoMap.get(videoNode.youtube_id) ?? null;
+    // Video nodes in this cluster
+    for (const sv of cluster.videos) {
+      const dbVideoId = videoMap.get(sv.video.youtube_id) ?? null;
 
       nodes.push({
         roadmap_id: roadmapId,
         video_id: dbVideoId,
         node_type: 'video',
-        label: videoNode.label,
-        description: videoNode.description,
-        position_x: NODE_X_START + VIDEO_X_OFFSET,
+        label: sv.video.title,
+        description: sv.video.channel_name,
+        position_x: branchX + VIDEO_X_OFFSET,
         position_y: yPos,
         order_index: orderIndex++,
         metadata: {
-          youtube_id: videoNode.youtube_id,
-          channel_name: '',
-          thumbnail_url: '',
-          duration_seconds: 0,
-          view_count: 0,
+          youtube_id: sv.video.youtube_id,
+          channel_name: sv.video.channel_name,
+          thumbnail_url: sv.video.thumbnail_url,
+          duration_seconds: sv.video.duration_seconds,
+          view_count: sv.video.view_count,
+          quality_score: sv.qualityScore,
+          bloom_level: sv.bloomLevel,
         },
       });
       yPos += NODE_Y_GAP;
     }
 
-    // Milestone after category
-    const milestone = structure.milestones?.find(
-      (m) => m.after_category === category.name
-    );
-    if (milestone) {
-      nodes.push({
-        roadmap_id: roadmapId,
-        video_id: null,
-        node_type: 'milestone',
-        label: milestone.label,
-        description: null,
-        position_x: NODE_X_START + CATEGORY_X_OFFSET,
-        position_y: yPos,
-        order_index: orderIndex++,
-        metadata: {
-          milestone_label: milestone.label,
-        },
-      });
-      yPos += NODE_Y_GAP;
-    }
+    // Milestone at end of branch
+    nodes.push({
+      roadmap_id: roadmapId,
+      video_id: null,
+      node_type: 'milestone',
+      label: `${cluster.name} tamamlandı!`,
+      description: null,
+      position_x: branchX + CATEGORY_X_OFFSET,
+      position_y: yPos,
+      order_index: orderIndex++,
+      metadata: {
+        milestone_label: `${cluster.name} tamamlandı!`,
+      },
+    });
   }
 
   // Insert nodes
@@ -345,100 +367,57 @@ async function saveRoadmapData(
     throw new Error('Failed to save roadmap nodes');
   }
 
-  // Build edge data. Map youtube_id -> inserted node DB id.
-  if (insertedNodes) {
-    for (const node of insertedNodes) {
-      const ytId = (node.metadata as Record<string, unknown>)?.youtube_id as
-        | string
-        | undefined;
-      if (ytId) {
-        nodeIdMap.set(ytId, node.id);
-      }
-    }
-  }
-
-  // Build edges from Gemini's edge list
+  // Build edges
   const edges: RoadmapEdge[] = [];
-  for (const e of structure.edges ?? []) {
-    const sourceId = nodeIdMap.get(e.source_youtube_id);
-    const targetId = nodeIdMap.get(e.target_youtube_id);
-    if (!sourceId || !targetId) continue;
 
-    const edge: RoadmapEdge = {
-      id: `e-${sourceId}-${targetId}`,
-      source: sourceId,
-      target: targetId,
-      type: e.type,
-    };
-    if (e.label) edge.label = e.label;
-    edges.push(edge);
-  }
-
-  // Also add structural edges: root -> categories, categories -> first video, video chain
-  const rootNode = insertedNodes?.find(
-    (n) => nodes[n.order_index]?.node_type === 'root'
-  );
-  if (rootNode) {
-    // Add root -> category edges
-    const categoryNodes =
-      insertedNodes?.filter(
-        (n) => nodes[n.order_index]?.node_type === 'category'
-      ) ?? [];
-    for (const cat of categoryNodes) {
-      edges.push({
-        id: `e-${rootNode.id}-${cat.id}`,
-        source: rootNode.id,
-        target: cat.id,
-        type: 'prerequisite',
-      });
+  if (insertedNodes) {
+    // Map order_index -> node id for edge building
+    const nodeById = new Map<number, string>();
+    for (const node of insertedNodes) {
+      nodeById.set(node.order_index, node.id);
     }
 
-    // Add category -> first video edges, and sequential video edges
-    let prevNodeInCategory: string | null = null;
-    let currentCategory: string | null = null;
+    const rootId = nodeById.get(0)!;
+    let nodeIdx = 1; // skip root
 
-    for (const node of insertedNodes ?? []) {
-      const nodeData = nodes[node.order_index];
-      if (!nodeData) continue;
+    for (const cluster of processed.clusters) {
+      const categoryId = nodeById.get(nodeIdx)!;
+      nodeIdx++;
 
-      if (nodeData.node_type === 'category') {
-        currentCategory = node.id;
-        prevNodeInCategory = null;
-      } else if (nodeData.node_type === 'video') {
-        if (currentCategory && !prevNodeInCategory) {
-          // Category -> first video
-          edges.push({
-            id: `e-${currentCategory}-${node.id}`,
-            source: currentCategory,
-            target: node.id,
-            type: 'prerequisite',
-          });
-        } else if (prevNodeInCategory) {
-          // Sequential: prev video -> this video (only if no Gemini edge exists)
-          const hasGeminiEdge = edges.some(
-            (e) => e.source === prevNodeInCategory && e.target === node.id
-          );
-          if (!hasGeminiEdge) {
-            edges.push({
-              id: `e-${prevNodeInCategory}-${node.id}`,
-              source: prevNodeInCategory,
-              target: node.id,
-              type: 'prerequisite',
-            });
-          }
-        }
-        prevNodeInCategory = node.id;
-      } else if (nodeData.node_type === 'milestone' && prevNodeInCategory) {
-        // Last video -> milestone
+      // Root -> category edge
+      edges.push({
+        id: `e-${rootId}-${categoryId}`,
+        source: rootId,
+        target: categoryId,
+        type: cluster.weight === 'optional' ? 'optional' : 'prerequisite',
+      });
+
+      // Category -> first video, then video chain
+      let prevId = categoryId;
+      for (let i = 0; i < cluster.videos.length; i++) {
+        const videoNodeId = nodeById.get(nodeIdx)!;
+        nodeIdx++;
+
         edges.push({
-          id: `e-${prevNodeInCategory}-${node.id}`,
-          source: prevNodeInCategory,
-          target: node.id,
+          id: `e-${prevId}-${videoNodeId}`,
+          source: prevId,
+          target: videoNodeId,
           type: 'prerequisite',
         });
-        prevNodeInCategory = null;
-        currentCategory = null;
+
+        prevId = videoNodeId;
       }
+
+      // Last video -> milestone
+      const milestoneId = nodeById.get(nodeIdx)!;
+      nodeIdx++;
+
+      edges.push({
+        id: `e-${prevId}-${milestoneId}`,
+        source: prevId,
+        target: milestoneId,
+        type: 'prerequisite',
+      });
     }
   }
 
@@ -448,7 +427,7 @@ async function saveRoadmapData(
     .update({
       status: 'ready',
       edges_data: edges,
-      video_count: structure.nodes.length,
+      video_count: processed.totalVideos,
       updated_at: new Date().toISOString(),
     })
     .eq('slug', slug);

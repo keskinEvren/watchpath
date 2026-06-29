@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
     const level: Level =
       body.level && VALID_LEVELS.includes(body.level) ? body.level : 'beginner';
     const language = body.language ?? 'tr';
+    const answers = body.answers ?? {};
 
     // Step 1: Create roadmap record (fast DB insert)
     const slug = await createRoadmapRecord(topic, level);
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
     // after() uses waitUntil on Vercel - keeps function alive after response
     after(async () => {
       try {
-        await runFullPipeline(slug, topic, level, language);
+        await runFullPipeline(slug, topic, level, language, answers);
       } catch (err) {
         console.error('[api/generate] Background pipeline error:', err);
       }
