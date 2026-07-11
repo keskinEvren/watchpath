@@ -645,6 +645,7 @@ async function finalizeRoadmapWithVideos(
           quality_score: sv.qualityScore,
           bloom_level: sv.bloomLevel,
           language: sv.video.language,
+          parent_topic_curriculum_id: topicNode.id,
         },
       };
 
@@ -679,12 +680,9 @@ async function finalizeRoadmapWithVideos(
     const topicDbId = findSkeletonNodeId(topicNode.id);
     if (!topicDbId) continue;
 
-    const topicNodeData = skeletonNodes.find(n => n.id === topicDbId);
-    if (!topicNodeData) continue;
-
-    // Find the matching video nodes in dbNodes array we built
+    // Find the matching video nodes in dbNodes array we built using curriculum_id
     const matchingVideosInDb = videoDbNodes
-      .filter(v => v.position_x === topicNodeData.position_x + 40 && v.position_y > topicNodeData.position_y)
+      .filter(v => v.metadata?.parent_topic_curriculum_id === topicNode.id)
       .sort((a, b) => a.order_index - b.order_index);
 
     let prevId = topicDbId;
@@ -701,9 +699,6 @@ async function finalizeRoadmapWithVideos(
       });
       prevId = videoDbId;
     }
-
-    // Now update category/milestone metadata video_count in database if needed, 
-    // but in v3 we can also keep it simple.
   }
 
   // Update root node description
