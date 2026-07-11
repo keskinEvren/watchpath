@@ -20,13 +20,23 @@ function formatViews(count: number): string {
 }
 
 export default function VideoNode({ data }: NodeProps) {
-  const { video, onClick } = data as unknown as VideoNodeData;
+  const { video, onClick, isComplete, onToggleComplete } = data as any;
   const thumb = video.thumbnail_url ?? `https://i.ytimg.com/vi/${video.youtube_id}/mqdefault.jpg`;
 
   return (
-    <div className={styles.node} onClick={onClick}>
+    <div className={`${styles.node} ${isComplete ? styles.nodeCompleted : ''}`} onClick={onClick}>
       <Handle type="target" position={Position.Top} />
       <div className={styles.content}>
+        <button
+          className={`${styles.checkbox} ${isComplete ? styles.checkboxCompleted : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onToggleComplete) onToggleComplete();
+          }}
+          aria-label="Tamamlandı olarak işaretle"
+        >
+          {isComplete && <span className={styles.checkIcon}>✓</span>}
+        </button>
         <div className={styles.thumbnailWrap}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -42,7 +52,12 @@ export default function VideoNode({ data }: NodeProps) {
           ) : null}
         </div>
         <div className={styles.info}>
-          <p className={styles.title}>{video.title}</p>
+          <p className={styles.title}>
+            {video.language === 'en' && (
+              <span className={styles.langBadge}>EN</span>
+            )}
+            {video.title}
+          </p>
           <span className={styles.channel}>{video.channel_name}</span>
           {video.view_count > 0 && (
             <span className={styles.views}>{formatViews(video.view_count)}</span>

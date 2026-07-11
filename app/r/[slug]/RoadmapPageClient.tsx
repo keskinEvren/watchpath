@@ -48,15 +48,17 @@ export default function RoadmapPageClient({ slug }: Props) {
     async function poll() {
       const result = await fetchRoadmap();
       if (cancelled) return;
-      if (result === 'generating') {
+      if (result === 'generating' || result === 'tree_ready') {
         interval = setInterval(async () => {
           if (cancelled) return;
           const s = await fetchRoadmap();
-          if (s !== 'generating' && interval) {
-            clearInterval(interval);
-            interval = null;
+          if (s === 'ready' || s === 'failed' || s === 'not_found') {
+            if (interval) {
+              clearInterval(interval);
+              interval = null;
+            }
           }
-        }, 2000);
+        }, 3000); // Poll every 3 seconds for database updates
       }
     }
 
@@ -131,6 +133,8 @@ export default function RoadmapPageClient({ slug }: Props) {
         videos={data.videos}
         topic={data.roadmap.topic}
         level={data.roadmap.level}
+        status={status as any}
+        slug={slug}
       />
     </>
   );

@@ -29,6 +29,8 @@ import CustomEdge from './CustomEdge';
 import CanvasControls from './CanvasControls';
 import VideoPanel from './VideoPanel';
 import styles from './RoadmapCanvas.module.css';
+import { getProgress, setNodeComplete, getCategoryProgress } from '@/lib/progress';
+import type { RoadmapStatus } from '@/types';
 
 // ---------- dagre layout ----------
 
@@ -93,6 +95,8 @@ interface RoadmapCanvasProps {
   videos: Video[];
   topic: string;
   level: Level;
+  status?: RoadmapStatus;
+  slug: string;
 }
 
 // ---------- Component ----------
@@ -103,11 +107,24 @@ export default function RoadmapCanvas({
   videos,
   topic,
   level,
+  status,
+  slug,
 }: RoadmapCanvasProps) {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
+  const [progress, setProgress] = useState<Record<string, boolean>>(() =>
+    getProgress(slug),
+  );
   const [collapsedChapters, setCollapsedChapters] = useState<Set<string>>(
     new Set(),
   );
+
+  const toggleComplete = useCallback((nodeId: string) => {
+    setProgress((prev) => {
+      const isCurrentlyDone = !!prev[nodeId];
+      const updated = setNodeComplete(slug, nodeId, !isCurrentlyDone);
+      return { ...updated };
+    });
+  }, [slug]);
 
   const videoMap = useMemo(() => {
     const map = new Map<string, Video>();
@@ -187,7 +204,8 @@ export default function RoadmapCanvas({
                 totalMinutes,
               },
             };
-          case 'category':
+          case 'category': {
+            const catProgress = getCategoryProgress(slug, node.id, roadmapNodes, roadmapEdges);
             return {
               ...base,
               type: 'category',
@@ -197,14 +215,18 @@ export default function RoadmapCanvas({
                 estimatedMinutes: node.metadata.estimated_minutes ?? 0,
                 isCollapsed: collapsedChapters.has(node.id),
                 onToggleCollapse: () => toggleCollapse(node.id),
+                progress: catProgress,
               },
             };
+          }
           case 'video': {
             const vid =
               videoMap.get(node.video_id ?? '') ??
               videoMap.get(node.metadata.youtube_id ?? '');
+            
+            const isComplete = !!progress[node.id];
+            
             if (!vid) {
-              // Fallback: create a stub video from metadata
               const stub: Video = {
                 id: node.video_id ?? node.id,
                 youtube_id: node.metadata.youtube_id ?? '',
@@ -216,7 +238,7 @@ export default function RoadmapCanvas({
                 view_count: node.metadata.view_count ?? 0,
                 description: node.description,
                 tags: [],
-                language: 'tr',
+                language: node.metadata.language as string ?? 'tr',
                 published_at: null,
                 fetched_at: new Date().toISOString(),
               };
@@ -226,6 +248,8 @@ export default function RoadmapCanvas({
                 data: {
                   video: stub,
                   onClick: () => setSelectedVideo(stub),
+                  isComplete,
+                  onToggleComplete: () => toggleComplete(node.id),
                 },
               };
             }
@@ -235,18 +259,25 @@ export default function RoadmapCanvas({
               data: {
                 video: vid,
                 onClick: () => setSelectedVideo(vid),
+                isComplete,
+                onToggleComplete: () => toggleComplete(node.id),
               },
             };
           }
-          case 'milestone':
+          case 'milestone': {
+            const isComplete = !!progress[node.id];
             return {
               ...base,
               type: 'milestone',
               data: {
                 label: node.metadata.milestone_label ?? node.label,
                 nextChapter: node.metadata.next_chapter,
+                status: status,
+                isComplete,
+                onToggleComplete: () => toggleComplete(node.id),
               },
             };
+          }
           default:
             return {
               ...base,

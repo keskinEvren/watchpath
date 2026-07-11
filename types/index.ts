@@ -5,7 +5,7 @@
 
 // ---- Database Models ----
 
-export type RoadmapStatus = 'generating' | 'ready' | 'failed';
+export type RoadmapStatus = 'generating' | 'tree_ready' | 'ready' | 'failed';
 export type NodeType = 'root' | 'category' | 'video' | 'milestone' | 'series';
 export type EdgeType = 'prerequisite' | 'related' | 'optional';
 export type Level = 'beginner' | 'intermediate' | 'advanced';
@@ -85,6 +85,7 @@ export interface NodeMetadata {
   duration_seconds?: number;
   view_count?: number;
   ai_summary?: string;
+  language?: string;
   // Milestone node
   milestone_label?: string;
   next_chapter?: string;

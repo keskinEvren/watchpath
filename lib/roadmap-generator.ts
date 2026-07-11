@@ -115,34 +115,60 @@ async function runCurriculumPipeline(
   const topics = tree.nodes.filter((n) => n.nodeType === 'topic');
   console.log(`[pipeline] Tree: ${categories.length} categories, ${topics.length} topics`);
 
-  // Step 3: Search YouTube for each topic node (batch by search terms)
-  console.log('[pipeline] Searching videos for each topic node...');
+  // --- Phase 1A: Save Skeleton & Set status to tree_ready ---
+  console.log('[pipeline] Saving curriculum skeleton (tree_ready)...');
+  const { dbNodes, initialEdges, roadmapId } = await saveSkeletonRoadmap(slug, topic, level, tree, profile);
+
+  // --- Phase 1B: Background video fetching, bilingual search, scoring, and matching ---
+  
+  console.log('[pipeline] Starting background video matching...');
   const nodeVideos = new Map<string, Video[]>();
   const allVideoIds = new Set<string>();
 
-  // Collect all unique search terms, grouped by node
-  const eduSuffix = language === 'tr' ? 'ders eğitim anlatım' : 'tutorial course lesson';
+  const eduSuffixTr = 'ders eğitim anlatım';
+  const eduSuffixEn = 'tutorial course lesson';
+
   for (const node of topics) {
+    // 1. Search in primary language (TR or EN)
+    const primarySuffix = language === 'tr' ? eduSuffixTr : eduSuffixEn;
     const rawTerm = node.searchTerms[0] ?? `${topic} ${node.name}`;
-    // Append educational keywords to push results toward lectures, not entertainment
-    const term = `${rawTerm} ${eduSuffix}`;
+    const term = `${rawTerm} ${primarySuffix}`;
 
     try {
-      const results = await searchVideos(term, 10, language);
+      const results = await searchVideos(term, 8, language);
       const newIds = results
         .map((r) => r.videoId)
         .filter((id) => !allVideoIds.has(id));
 
+      let trFiltered: Video[] = [];
       if (newIds.length > 0) {
         const details = await getVideoDetails(newIds);
-        // Filter: minimum 2 minutes (short clips are rarely educational)
-        const filtered = details.filter(
+        trFiltered = details.filter(
           (v) => v.duration_seconds !== null && v.duration_seconds >= 120,
         );
-        if (filtered.length > 0) {
-          nodeVideos.set(node.id, filtered);
-          for (const v of filtered) allVideoIds.add(v.youtube_id);
+      }
+
+      // 2. Bilingual Fallback: If not enough high quality videos and primary is TR, search English
+      if (trFiltered.length < 2 && language === 'tr') {
+        const enTerm = `${node.name} ${topic} ${eduSuffixEn}`;
+        console.log(`[pipeline] Low Turkish results for "${node.name}". Trying English fallback: "${enTerm}"`);
+        const enResults = await searchVideos(enTerm, 6, 'en');
+        const enIds = enResults
+          .map((r) => r.videoId)
+          .filter((id) => !allVideoIds.has(id));
+
+        if (enIds.length > 0) {
+          const enDetails = await getVideoDetails(enIds);
+          const enFiltered = enDetails.filter(
+            (v) => v.duration_seconds !== null && v.duration_seconds >= 120,
+          );
+          trFiltered = [...trFiltered, ...enFiltered];
         }
+      }
+
+      if (trFiltered.length > 0) {
+        nodeVideos.set(node.id, trFiltered);
+        for (const v of trFiltered) allVideoIds.add(v.youtube_id);
       }
     } catch (err) {
       console.log(`[pipeline] Search failed for "${node.name}":`, err);
@@ -208,8 +234,8 @@ async function runCurriculumPipeline(
     totalMinutes,
   };
 
-  // Step 7: Save to DB
-  await saveCurriculumRoadmap(slug, topic, level, processed, upsertedMap);
+  // Step 7: Update and finalize DB nodes & edges
+  await finalizeRoadmapWithVideos(slug, roadmapId, processed, upsertedMap, dbNodes, initialEdges);
   console.log(`[pipeline] Roadmap "${slug}" is ready`);
 }
 
@@ -326,13 +352,34 @@ async function upsertVideos(
  *   Topics chain vertically under each category
  *   Videos attach as children under each topic
  */
-async function saveCurriculumRoadmap(
+interface SkeletonResult {
+  dbNodes: Array<{
+    id?: string;
+    roadmap_id: string;
+    video_id: string | null;
+    node_type: string;
+    label: string;
+    description: string | null;
+    position_x: number;
+    position_y: number;
+    order_index: number;
+    metadata: Record<string, unknown>;
+  }>;
+  initialEdges: RoadmapEdge[];
+  roadmapId: string;
+}
+
+/**
+ * Saves initial curriculum skeleton (Categories & Topics) without videos.
+ * Status is set to 'tree_ready'.
+ */
+async function saveSkeletonRoadmap(
   slug: string,
   topic: string,
   level: Level,
-  processed: ProcessedCurriculum,
-  videoMap: Map<string, string>,
-): Promise<void> {
+  tree: CurriculumTree,
+  profile: UserProfile,
+): Promise<SkeletonResult> {
   const { data: roadmap } = await supabaseAdmin
     .from('roadmaps')
     .select('id')
@@ -340,15 +387,14 @@ async function saveCurriculumRoadmap(
     .single();
 
   if (!roadmap) throw new Error('Roadmap not found');
-
   const roadmapId = roadmap.id;
-  const { nodesWithVideos, tree } = processed;
 
-  // Separate categories and topics
-  const categories = nodesWithVideos.filter((n) => n.nodeType === 'category');
-  const topicsByParent = new Map<string, CurriculumNodeWithVideos[]>();
-  for (const node of nodesWithVideos) {
-    if (node.nodeType === 'topic' && node.parentId) {
+  const categories = tree.nodes.filter((n) => n.nodeType === 'category');
+  const topics = tree.nodes.filter((n) => n.nodeType === 'topic');
+
+  const topicsByParent = new Map<string, typeof topics>();
+  for (const node of topics) {
+    if (node.parentId) {
       const list = topicsByParent.get(node.parentId) ?? [];
       list.push(node);
       topicsByParent.set(node.parentId, list);
@@ -369,37 +415,35 @@ async function saveCurriculumRoadmap(
 
   let orderIndex = 0;
 
-  // Root node
+  // 1. Root Node
   dbNodes.push({
     roadmap_id: roadmapId,
     video_id: null,
     node_type: 'root',
     label: topic,
-    description: `${processed.totalVideos} video · ${processed.totalMinutes} dk`,
+    description: `Müfredat yükleniyor...`,
     position_x: 0,
     position_y: 0,
     order_index: orderIndex++,
     metadata: {
-      total_duration_minutes: processed.totalMinutes,
-      total_videos: processed.totalVideos,
+      total_duration_minutes: 0,
+      total_videos: 0,
       estimated_hours: tree.totalEstimatedHours,
     },
   });
 
-  // Layout: categories spread horizontally, topics vertically
   const totalCats = categories.length;
   const startX = -((totalCats - 1) * BRANCH_X_GAP) / 2;
 
-  // Track the order: root, then for each category: category -> topics -> videos
+  // Build nodes structure
   for (let catIdx = 0; catIdx < categories.length; catIdx++) {
     const cat = categories[catIdx];
     const branchX = startX + catIdx * BRANCH_X_GAP;
     let yPos = NODE_Y_GAP;
 
-    // Category node
     const catTopics = topicsByParent.get(cat.id) ?? [];
-    const catVideoCount = catTopics.reduce((s, t) => s + t.videos.length, 0);
 
+    // 2. Category Node
     dbNodes.push({
       roadmap_id: roadmapId,
       video_id: null,
@@ -412,7 +456,7 @@ async function saveCurriculumRoadmap(
       metadata: {
         category_name: cat.name,
         curriculum_id: cat.id,
-        video_count: catVideoCount,
+        video_count: 0,
         topic_count: catTopics.length,
         importance: cat.importance,
         is_collapsed: false,
@@ -420,13 +464,12 @@ async function saveCurriculumRoadmap(
     });
     yPos += NODE_Y_GAP;
 
-    // Topic nodes under this category
+    // 3. Topic (Milestone) Nodes under this category
     for (const topicNode of catTopics.sort((a, b) => a.order - b.order)) {
-      // Topic node (shows as a sub-heading)
       dbNodes.push({
         roadmap_id: roadmapId,
         video_id: null,
-        node_type: 'milestone', // reuse milestone as topic label node
+        node_type: 'milestone',
         label: topicNode.name,
         description: topicNode.description,
         position_x: branchX,
@@ -436,123 +479,262 @@ async function saveCurriculumRoadmap(
           curriculum_id: topicNode.id,
           importance: topicNode.importance,
           milestone_label: topicNode.name,
-          video_count: topicNode.videos.length,
+          video_count: 0,
         },
       });
+      // Leave space for video chain under this topic in the layout
       yPos += NODE_Y_GAP * 0.8;
-
-      // Video nodes under this topic
-      for (const sv of topicNode.videos) {
-        const dbVideoId = videoMap.get(sv.video.youtube_id) ?? null;
-        dbNodes.push({
-          roadmap_id: roadmapId,
-          video_id: dbVideoId,
-          node_type: 'video',
-          label: sv.video.title,
-          description: sv.video.channel_name,
-          position_x: branchX + 40,
-          position_y: yPos,
-          order_index: orderIndex++,
-          metadata: {
-            youtube_id: sv.video.youtube_id,
-            channel_name: sv.video.channel_name,
-            thumbnail_url: sv.video.thumbnail_url,
-            duration_seconds: sv.video.duration_seconds,
-            view_count: sv.video.view_count,
-            quality_score: sv.qualityScore,
-            bloom_level: sv.bloomLevel,
-          },
-        });
-        yPos += NODE_Y_GAP * 0.7;
-      }
-
+      // We reserve coordinates but video nodes are added in Phase 1B
+      yPos += NODE_Y_GAP * 0.7 * 3; // reserve space for up to 3 videos
       yPos += NODE_Y_GAP * 0.3; // extra gap between topics
     }
   }
 
-  // Insert all nodes
+  // Save skeleton nodes to DB
   const { data: insertedNodes, error: nodesError } = await supabaseAdmin
     .from('roadmap_nodes')
     .insert(dbNodes)
     .select('id, order_index, metadata');
 
-  if (nodesError) {
-    console.error('[pipeline] Failed to insert nodes:', nodesError.message);
-    throw new Error('Failed to save nodes');
+  if (nodesError || !insertedNodes) {
+    console.error('[pipeline] Failed to insert skeleton nodes:', nodesError?.message);
+    throw new Error('Failed to save skeleton nodes');
   }
 
-  // Build edges from the tree structure
-  const edges: RoadmapEdge[] = [];
+  // Link DB node IDs back to categories and topics
+  const nodeById = new Map<number, string>();
+  for (const node of insertedNodes) {
+    nodeById.set(node.order_index, node.id);
+  }
 
-  if (insertedNodes) {
-    const nodeById = new Map<number, string>();
-    for (const node of insertedNodes) {
-      nodeById.set(node.order_index, node.id);
-    }
+  // Build initial edges list
+  const initialEdges: RoadmapEdge[] = [];
+  const rootId = nodeById.get(0)!;
+  let idx = 1;
 
-    const rootId = nodeById.get(0)!;
-    let idx = 1;
+  for (const cat of categories) {
+    const catId = nodeById.get(idx)!;
+    idx++;
 
-    for (const cat of categories) {
-      const catId = nodeById.get(idx)!;
+    // Root -> Category
+    initialEdges.push({
+      id: `e-${rootId}-${catId}`,
+      source: rootId,
+      target: catId,
+      type: cat.importance === 'optional' ? 'optional' : 'prerequisite',
+    });
+
+    const catTopics = topicsByParent.get(cat.id) ?? [];
+    let prevTopicId = catId;
+
+    for (const topicNode of catTopics.sort((a, b) => a.order - b.order)) {
+      const topicId = nodeById.get(idx)!;
       idx++;
 
-      // Root -> category
-      edges.push({
-        id: `e-${rootId}-${catId}`,
-        source: rootId,
-        target: catId,
-        type: cat.importance === 'optional' ? 'optional' : 'prerequisite',
+      // Category / prev topic -> this topic node
+      initialEdges.push({
+        id: `e-${prevTopicId}-${topicId}`,
+        source: prevTopicId,
+        target: topicId,
+        type: topicNode.importance === 'optional' ? 'optional' : 'prerequisite',
       });
 
-      const catTopics = topicsByParent.get(cat.id) ?? [];
-      let prevTopicId = catId;
-
-      for (const topicNode of catTopics.sort((a, b) => a.order - b.order)) {
-        const topicId = nodeById.get(idx)!;
-        idx++;
-
-        // Category/prev topic -> this topic
-        edges.push({
-          id: `e-${prevTopicId}-${topicId}`,
-          source: prevTopicId,
-          target: topicId,
-          type: topicNode.importance === 'optional' ? 'optional' : 'prerequisite',
-        });
-
-        // Topic -> videos (chain)
-        let prevId = topicId;
-        for (const sv of topicNode.videos) {
-          const videoId = nodeById.get(idx)!;
-          idx++;
-
-          edges.push({
-            id: `e-${prevId}-${videoId}`,
-            source: prevId,
-            target: videoId,
-            type: 'prerequisite',
-          });
-          prevId = videoId;
-        }
-
-        prevTopicId = prevId; // last video or topic node
-      }
+      prevTopicId = topicId;
     }
   }
 
-  // Finalize
+  // Update roadmap status to 'tree_ready'
+  const { error: updateError } = await supabaseAdmin
+    .from('roadmaps')
+    .update({
+      status: 'tree_ready',
+      edges_data: initialEdges,
+      video_count: 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', roadmapId);
+
+  if (updateError) {
+    console.error('[pipeline] Failed to update skeleton status:', updateError.message);
+  }
+
+  // Re-map dbNodes with generated IDs from database
+  const mappedDbNodes = dbNodes.map((node, i) => ({
+    ...node,
+    id: insertedNodes.find(n => n.order_index === node.order_index)?.id
+  }));
+
+  return {
+    dbNodes: mappedDbNodes,
+    initialEdges,
+    roadmapId,
+  };
+}
+
+/**
+ * Appends video nodes to the roadmap nodes and updates status to 'ready'.
+ */
+async function finalizeRoadmapWithVideos(
+  slug: string,
+  roadmapId: string,
+  processed: ProcessedCurriculum,
+  videoMap: Map<string, string>,
+  skeletonNodes: SkeletonResult['dbNodes'],
+  initialEdges: RoadmapEdge[],
+): Promise<void> {
+  const { nodesWithVideos } = processed;
+  const topics = nodesWithVideos.filter((n) => n.nodeType === 'topic');
+
+  const videoDbNodes: Array<{
+    roadmap_id: string;
+    video_id: string | null;
+    node_type: string;
+    label: string;
+    description: string | null;
+    position_x: number;
+    position_y: number;
+    order_index: number;
+    metadata: Record<string, unknown>;
+  }> = [];
+
+  const finalEdges = [...initialEdges];
+  let orderIndex = skeletonNodes.length + 10; // Start video order index offset from skeleton
+
+  // Helper map to find the node database ID from skeleton metadata
+  const findSkeletonNodeId = (curriculumId: string): string | undefined => {
+    return skeletonNodes.find(n => n.metadata?.curriculum_id === curriculumId)?.id;
+  };
+
+  for (const topicNode of topics) {
+    const topicDbId = findSkeletonNodeId(topicNode.id);
+    if (!topicDbId) continue;
+
+    // Get the topic node's position and details from skeleton
+    const topicNodeData = skeletonNodes.find(n => n.id === topicDbId);
+    if (!topicNodeData) continue;
+
+    const branchX = topicNodeData.position_x;
+    let yPos = topicNodeData.position_y + NODE_Y_GAP * 0.8;
+
+    let prevId = topicDbId;
+
+    // Map videos to nodes
+    const videoNodeIds: string[] = [];
+
+    for (const sv of topicNode.videos) {
+      const dbVideoId = videoMap.get(sv.video.youtube_id) ?? null;
+      const order = orderIndex++;
+
+      // Create a unique temporary id that next step will resolve, or generate a uuid
+      // Since we insert video node directly, we can get its ID after insert
+      const videoNodeData = {
+        roadmap_id: roadmapId,
+        video_id: dbVideoId,
+        node_type: 'video' as const,
+        label: sv.video.title,
+        description: sv.video.channel_name,
+        position_x: branchX + 40,
+        position_y: yPos,
+        order_index: order,
+        metadata: {
+          youtube_id: sv.video.youtube_id,
+          channel_name: sv.video.channel_name,
+          thumbnail_url: sv.video.thumbnail_url,
+          duration_seconds: sv.video.duration_seconds,
+          view_count: sv.video.view_count,
+          quality_score: sv.qualityScore,
+          bloom_level: sv.bloomLevel,
+          language: sv.video.language,
+        },
+      };
+
+      videoDbNodes.push(videoNodeData);
+      yPos += NODE_Y_GAP * 0.7;
+    }
+  }
+
+  // Insert video nodes
+  let insertedVideos: Array<{ id: string; order_index: number }> = [];
+  if (videoDbNodes.length > 0) {
+    const { data, error } = await supabaseAdmin
+      .from('roadmap_nodes')
+      .insert(videoDbNodes)
+      .select('id, order_index');
+
+    if (error) {
+      console.error('[pipeline] Failed to insert video nodes:', error.message);
+    } else if (data) {
+      insertedVideos = data;
+    }
+  }
+
+  // Build connection edges for the newly inserted videos
+  const videoNodeByOrder = new Map<number, string>();
+  for (const iv of insertedVideos) {
+    videoNodeByOrder.set(iv.order_index, iv.id);
+  }
+
+  // Link videos into topic nodes in finalEdges
+  for (const topicNode of topics) {
+    const topicDbId = findSkeletonNodeId(topicNode.id);
+    if (!topicDbId) continue;
+
+    const topicNodeData = skeletonNodes.find(n => n.id === topicDbId);
+    if (!topicNodeData) continue;
+
+    // Find the matching video nodes in dbNodes array we built
+    const matchingVideosInDb = videoDbNodes
+      .filter(v => v.position_x === topicNodeData.position_x + 40 && v.position_y > topicNodeData.position_y)
+      .sort((a, b) => a.order_index - b.order_index);
+
+    let prevId = topicDbId;
+
+    for (const vDb of matchingVideosInDb) {
+      const videoDbId = videoNodeByOrder.get(vDb.order_index);
+      if (!videoDbId) continue;
+
+      finalEdges.push({
+        id: `e-${prevId}-${videoDbId}`,
+        source: prevId,
+        target: videoDbId,
+        type: 'prerequisite',
+      });
+      prevId = videoDbId;
+    }
+
+    // Now update category/milestone metadata video_count in database if needed, 
+    // but in v3 we can also keep it simple.
+  }
+
+  // Update root node description
+  const rootNode = skeletonNodes.find(n => n.node_type === 'root');
+  if (rootNode && rootNode.id) {
+    await supabaseAdmin
+      .from('roadmap_nodes')
+      .update({
+        description: `${processed.totalVideos} video · ${processed.totalMinutes} dk`,
+        metadata: {
+          ...rootNode.metadata,
+          total_duration_minutes: processed.totalMinutes,
+          total_videos: processed.totalVideos,
+        }
+      })
+      .eq('id', rootNode.id);
+  }
+
+  // Finalize roadmap status & metadata
   const { error: updateError } = await supabaseAdmin
     .from('roadmaps')
     .update({
       status: 'ready',
-      edges_data: edges,
+      edges_data: finalEdges,
       video_count: processed.totalVideos,
       updated_at: new Date().toISOString(),
     })
-    .eq('slug', slug);
+    .eq('id', roadmapId);
 
   if (updateError) {
-    console.error('[pipeline] Failed to update roadmap:', updateError.message);
+    console.error('[pipeline] Failed to finalize roadmap status:', updateError.message);
     throw new Error('Failed to finalize roadmap');
   }
 }

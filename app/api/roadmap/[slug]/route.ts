@@ -28,8 +28,7 @@ export async function GET(
 
     const typedRoadmap = roadmap as Roadmap;
 
-    // If still generating, return the roadmap with empty nodes/videos
-    // Client polls this endpoint until status changes
+    // If still generating (no skeleton yet), return empty list so client shows loading
     if (typedRoadmap.status === 'generating') {
       const response: RoadmapDetailResponse = {
         roadmap: typedRoadmap,
@@ -39,7 +38,7 @@ export async function GET(
       return NextResponse.json(response);
     }
 
-    // If failed, return the roadmap with empty data so client can show error
+    // If failed, return empty lists so client shows failure UI
     if (typedRoadmap.status === 'failed') {
       const response: RoadmapDetailResponse = {
         roadmap: typedRoadmap,
@@ -49,7 +48,8 @@ export async function GET(
       return NextResponse.json(response);
     }
 
-    // Status is "ready" - fetch nodes and associated videos
+    // Status is "tree_ready" or "ready" - fetch currently generated nodes and videos
+    // Progressive rendering: nodes list might grow and status updates to ready later.
     const { data: nodes, error: nodesError } = await supabaseAdmin
       .from('roadmap_nodes')
       .select('*')

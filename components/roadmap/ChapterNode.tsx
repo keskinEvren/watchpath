@@ -5,11 +5,12 @@ import type { ChapterNodeData } from '@/types';
 import styles from './ChapterNode.module.css';
 
 export default function ChapterNode({ data }: NodeProps) {
-  const { name, videoCount, estimatedMinutes, isCollapsed, onToggleCollapse } =
-    data as unknown as ChapterNodeData;
+  const { name, videoCount, estimatedMinutes, isCollapsed, onToggleCollapse, progress } =
+    data as any;
 
   const hours = Math.round(estimatedMinutes / 60);
   const timeLabel = estimatedMinutes >= 60 ? `~${hours} saat` : `~${estimatedMinutes} dk`;
+  const displayProgress = progress ?? 0;
 
   return (
     <div className={styles.node}>
@@ -28,8 +29,20 @@ export default function ChapterNode({ data }: NodeProps) {
         </button>
       </div>
       <div className={styles.meta}>
-        {videoCount} video · {timeLabel}
+        {videoCount > 0 ? `${videoCount} video · ${timeLabel}` : 'Videolar aranıyor...'}
       </div>
+      
+      {/* Progress Bar UI */}
+      <div className={styles.progressContainer}>
+        <div className={styles.progressBar}>
+          <div 
+            className={styles.progressFill} 
+            style={{ width: `${displayProgress}%` }} 
+          />
+        </div>
+        <span className={styles.progressText}>%{displayProgress} tamamlandı</span>
+      </div>
+      
       <Handle type="source" position={Position.Bottom} />
     </div>
   );
