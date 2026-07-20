@@ -46,6 +46,10 @@ export async function createRoadmapRecord(
 
   if (insertError) {
     console.error('[pipeline] Failed to create roadmap:', insertError.message);
+    console.error('[pipeline] Full error:', JSON.stringify(insertError, null, 2));
+    if (insertError.cause) {
+      console.error('[pipeline] Error cause:', insertError.cause);
+    }
     throw new Error('Failed to create roadmap record');
   }
 

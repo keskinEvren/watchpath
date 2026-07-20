@@ -13,7 +13,7 @@ import type {
 } from '@/types';
 import { condenseTranscript } from '@/lib/transcript';
 
-const MODEL_NAME = 'gemini-2.0-flash';
+const MODEL_NAME = 'gemini-3.1-flash-lite';
 const TIMEOUT_MS = 45_000;
 
 function getClient(): GoogleGenerativeAI {
@@ -49,7 +49,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Run a Gemini call with timeout per attempt.
- * Uses gemini-2.0-flash: standard fast model.
+ * Uses gemini-3.1-flash-lite: non-thinking model, no thinking token costs.
  */
 async function callGemini(
   prompt: string,
