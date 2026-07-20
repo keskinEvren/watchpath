@@ -25,6 +25,9 @@ import RootNode from './RootNode';
 import ChapterNode from './ChapterNode';
 import VideoNode from './VideoNode';
 import MilestoneNode from './MilestoneNode';
+import SkeletonVideoNode from './SkeletonVideoNode';
+import NoteNode from './NoteNode';
+import ConceptNode from './ConceptNode';
 import CustomEdge from './CustomEdge';
 import CanvasControls from './CanvasControls';
 import VideoPanel from './VideoPanel';
@@ -34,12 +37,15 @@ import type { RoadmapStatus } from '@/types';
 
 // ---------- dagre layout ----------
 
-const NODE_DIMENSIONS: Record<NodeType, { width: number; height: number }> = {
+const NODE_DIMENSIONS: Record<NodeType | 'skeletonVideo', { width: number; height: number }> = {
   root: { width: 320, height: 100 },
   category: { width: 240, height: 80 },
   video: { width: 280, height: 100 },
   milestone: { width: 220, height: 60 },
   series: { width: 300, height: 110 },
+  skeletonVideo: { width: 280, height: 100 },
+  note: { width: 260, height: 120 },
+  concept: { width: 220, height: 60 },
 };
 
 function layoutNodes(
@@ -51,7 +57,7 @@ function layoutNodes(
   g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 });
 
   for (const node of nodes) {
-    const dim = NODE_DIMENSIONS[(node.type as NodeType) ?? 'video'];
+    const dim = NODE_DIMENSIONS[(node.type as NodeType | 'skeletonVideo') ?? 'video'] || { width: 280, height: 100 };
     g.setNode(node.id, { width: dim.width, height: dim.height });
   }
 
@@ -63,7 +69,7 @@ function layoutNodes(
 
   return nodes.map((node) => {
     const pos = g.node(node.id);
-    const dim = NODE_DIMENSIONS[(node.type as NodeType) ?? 'video'];
+    const dim = NODE_DIMENSIONS[(node.type as NodeType | 'skeletonVideo') ?? 'video'] || { width: 280, height: 100 };
     return {
       ...node,
       position: {
@@ -81,6 +87,9 @@ const nodeTypes = {
   category: ChapterNode,
   video: VideoNode,
   milestone: MilestoneNode,
+  skeletonVideo: SkeletonVideoNode,
+  note: NoteNode,
+  concept: ConceptNode,
 };
 
 const edgeTypes = {
@@ -95,7 +104,9 @@ interface RoadmapCanvasProps {
   videos: Video[];
   topic: string;
   level: Level;
-  status?: RoadmapStatus;
+  status?: RoadmapStatus | 'revealing' | 'loading' | 'not_found';
+  revealedCount?: number;
+  skeletonRevealedCount?: number;
   slug: string;
 }
 
@@ -108,6 +119,8 @@ export default function RoadmapCanvas({
   topic,
   level,
   status,
+  revealedCount = 0,
+  skeletonRevealedCount = Infinity,
   slug,
 }: RoadmapCanvasProps) {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
@@ -184,8 +197,16 @@ export default function RoadmapCanvas({
       roadmapNodes.find((n) => n.node_type === 'root')?.metadata.total_videos ??
       videos.length;
 
-    return roadmapNodes
-      .filter((n) => !hiddenNodeIds.has(n.id))
+    const videoNodes = roadmapNodes.filter(
+      (n) => n.node_type === 'video' && !hiddenNodeIds.has(n.id),
+    );
+
+    // During tree_ready, progressively reveal nodes
+    const visibleNodes = status === 'tree_ready'
+      ? roadmapNodes.filter((n) => !hiddenNodeIds.has(n.id)).slice(0, skeletonRevealedCount)
+      : roadmapNodes.filter((n) => !hiddenNodeIds.has(n.id));
+
+    const baseNodes = visibleNodes
       .map((node): Node => {
         const base = {
           id: node.id,
@@ -220,6 +241,17 @@ export default function RoadmapCanvas({
             };
           }
           case 'video': {
+            const videoIndex = videoNodes.findIndex((vn) => vn.id === node.id);
+            const isRevealed = status !== 'revealing' || videoIndex < revealedCount;
+
+            if (!isRevealed) {
+              return {
+                ...base,
+                type: 'skeletonVideo',
+                data: {},
+              };
+            }
+
             const vid =
               videoMap.get(node.video_id ?? '') ??
               videoMap.get(node.metadata.youtube_id ?? '');
@@ -247,6 +279,7 @@ export default function RoadmapCanvas({
                 type: 'video',
                 data: {
                   video: stub,
+                  aiSummary: node.metadata.ai_summary,
                   onClick: () => setSelectedVideo(stub),
                   isComplete,
                   onToggleComplete: () => toggleComplete(node.id),
@@ -258,14 +291,42 @@ export default function RoadmapCanvas({
               type: 'video',
               data: {
                 video: vid,
+                aiSummary: node.metadata.ai_summary,
                 onClick: () => setSelectedVideo(vid),
                 isComplete,
                 onToggleComplete: () => toggleComplete(node.id),
+                importance: node.metadata.importance,
               },
             };
           }
           case 'milestone': {
             const isComplete = !!progress[node.id];
+            const originalType = node.metadata.original_type;
+
+            if (originalType === 'note' || node.metadata.note_text) {
+              return {
+                ...base,
+                type: 'note',
+                data: {
+                  label: node.label,
+                  noteText: node.metadata.note_text as string,
+                  importance: node.metadata.importance as any,
+                },
+              };
+            }
+
+            if (originalType === 'concept' || node.metadata.concept_url) {
+              return {
+                ...base,
+                type: 'concept',
+                data: {
+                  label: node.label,
+                  conceptUrl: node.metadata.concept_url as string,
+                  importance: node.metadata.importance as any,
+                },
+              };
+            }
+
             return {
               ...base,
               type: 'milestone',
@@ -286,6 +347,29 @@ export default function RoadmapCanvas({
             };
         }
       });
+
+    if (status === 'tree_ready') {
+      const skelNodes: Node[] = [];
+      const milestones = roadmapNodes.filter((n) => n.node_type === 'milestone');
+      for (const m of milestones) {
+        if (hiddenNodeIds.has(m.id)) continue;
+        skelNodes.push({
+          id: `${m.id}-skel-1`,
+          position: { x: m.position_x, y: m.position_y + 120 },
+          type: 'skeletonVideo',
+          data: {},
+        });
+        skelNodes.push({
+          id: `${m.id}-skel-2`,
+          position: { x: m.position_x, y: m.position_y + 220 },
+          type: 'skeletonVideo',
+          data: {},
+        });
+      }
+      return [...baseNodes, ...skelNodes];
+    }
+
+    return baseNodes;
   }, [
     roadmapNodes,
     hiddenNodeIds,
@@ -295,12 +379,27 @@ export default function RoadmapCanvas({
     videoMap,
     collapsedChapters,
     toggleCollapse,
+    status,
+    progress,
+    toggleComplete,
+    roadmapEdges,
+    slug,
+    revealedCount,
+    skeletonRevealedCount,
   ]);
 
   // Map to React Flow edges
   const rfEdges = useMemo((): Edge[] => {
-    return roadmapEdges
-      .filter((e) => !hiddenNodeIds.has(e.source) && !hiddenNodeIds.has(e.target))
+    // Build set of node IDs that are actually in the graph
+    const visibleNodeIds = new Set(rfNodes.map((n) => n.id));
+
+    const baseEdges = roadmapEdges
+      .filter((e) =>
+        !hiddenNodeIds.has(e.source) &&
+        !hiddenNodeIds.has(e.target) &&
+        visibleNodeIds.has(e.source) &&
+        visibleNodeIds.has(e.target)
+      )
       .map((edge): Edge => ({
         id: edge.id,
         source: edge.source,
@@ -315,22 +414,67 @@ export default function RoadmapCanvas({
           color: edge.type === 'prerequisite' ? '#a8a29e' : '#d6d3d1',
         },
       }));
-  }, [roadmapEdges, hiddenNodeIds]);
+
+    if (status === 'tree_ready') {
+      const milestones = roadmapNodes.filter((n) => n.node_type === 'milestone');
+      const skelEdges: Edge[] = [];
+      for (const m of milestones) {
+        if (hiddenNodeIds.has(m.id)) continue;
+        if (!visibleNodeIds.has(m.id)) continue;
+        if (!visibleNodeIds.has(`${m.id}-skel-1`)) continue;
+        skelEdges.push({
+          id: `e-${m.id}-${m.id}-skel-1`,
+          source: m.id,
+          target: `${m.id}-skel-1`,
+          type: 'custom',
+          data: { edgeType: 'prerequisite' },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 16,
+            height: 16,
+            color: '#d6d3d1',
+          },
+        });
+        if (visibleNodeIds.has(`${m.id}-skel-2`)) {
+          skelEdges.push({
+            id: `e-${m.id}-skel-1-skel-2`,
+            source: `${m.id}-skel-1`,
+            target: `${m.id}-skel-2`,
+            type: 'custom',
+            data: { edgeType: 'prerequisite' },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: 16,
+              height: 16,
+              color: '#d6d3d1',
+            },
+          });
+        }
+      }
+      return [...baseEdges, ...skelEdges];
+    }
+
+    return baseEdges;
+  }, [roadmapEdges, hiddenNodeIds, status, roadmapNodes, rfNodes]);
 
   // Apply dagre layout
-  const layoutedNodes = useMemo(
-    () => layoutNodes(rfNodes, rfEdges),
-    [rfNodes, rfEdges],
-  );
+  const layoutedNodes = useMemo(() => {
+    return layoutNodes(rfNodes, rfEdges);
+  }, [rfNodes, rfEdges]);
+
+  const selectedNode = useMemo(() => {
+    if (!selectedVideo) return null;
+    return roadmapNodes.find(
+      (n) =>
+        n.video_id === selectedVideo.id ||
+        n.metadata.youtube_id === selectedVideo.youtube_id,
+    );
+  }, [selectedVideo, roadmapNodes]);
 
   // Related nodes for the selected video
   const relatedNodes = useMemo(() => {
     if (!selectedVideo) return [];
-    const selectedNodeId = roadmapNodes.find(
-      (n) =>
-        n.video_id === selectedVideo.id ||
-        n.metadata.youtube_id === selectedVideo.youtube_id,
-    )?.id;
+    const selectedNodeId = selectedNode?.id;
     if (!selectedNodeId) return [];
 
     const relatedIds = new Set<string>();
@@ -341,7 +485,7 @@ export default function RoadmapCanvas({
     return roadmapNodes.filter(
       (n) => relatedIds.has(n.id) && n.node_type === 'video',
     );
-  }, [selectedVideo, roadmapNodes, roadmapEdges]);
+  }, [selectedVideo, selectedNode, roadmapNodes, roadmapEdges]);
 
   return (
     <div className={styles.canvasWrap}>
@@ -381,6 +525,7 @@ export default function RoadmapCanvas({
         video={selectedVideo}
         onClose={() => setSelectedVideo(null)}
         relatedNodes={relatedNodes}
+        aiSummary={selectedNode?.metadata?.ai_summary}
       />
       {/* SVG defs for arrowhead marker */}
       <svg className={styles.arrowDefs}>

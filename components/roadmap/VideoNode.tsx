@@ -20,11 +20,12 @@ function formatViews(count: number): string {
 }
 
 export default function VideoNode({ data }: NodeProps) {
-  const { video, onClick, isComplete, onToggleComplete } = data as any;
+  const { video, onClick, isComplete, onToggleComplete, aiSummary, importance } = data as any;
   const thumb = video.thumbnail_url ?? `https://i.ytimg.com/vi/${video.youtube_id}/mqdefault.jpg`;
+  const importanceClass = importance ? styles[importance] : '';
 
   return (
-    <div className={`${styles.node} ${isComplete ? styles.nodeCompleted : ''}`} onClick={onClick}>
+    <div className={`${styles.node} ${isComplete ? styles.nodeCompleted : ''} ${importanceClass}`} onClick={onClick}>
       <Handle type="target" position={Position.Top} />
       <div className={styles.content}>
         <button
@@ -58,7 +59,21 @@ export default function VideoNode({ data }: NodeProps) {
             )}
             {video.title}
           </p>
-          <span className={styles.channel}>{video.channel_name}</span>
+          
+          <div className={styles.metaRow}>
+            <span className={styles.channel}>{video.channel_name}</span>
+            {importance && (
+              <span className={`${styles.importanceBadge} ${styles[importance + 'Badge']}`}>
+                {importance === 'required' ? 'Zorunlu' : importance === 'recommended' ? 'Önerilen' : 'Seçmeli'}
+              </span>
+            )}
+          </div>
+
+          {aiSummary && (
+            <p className={styles.aiSummary}>
+              <span className={styles.aiSparkle}>✨</span> {aiSummary}
+            </p>
+          )}
           {video.view_count > 0 && (
             <span className={styles.views}>{formatViews(video.view_count)}</span>
           )}

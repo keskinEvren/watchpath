@@ -85,7 +85,7 @@ export async function clearExpiredCache(): Promise<number> {
 
 import type { CurriculumTree } from '@/types';
 
-const CURRICULUM_CACHE_PREFIX = '__curriculum__';
+const CURRICULUM_CACHE_PREFIX = '__curriculum_v3__';
 const CURRICULUM_TTL_DAYS = 30;
 
 function curriculumCacheKey(topic: string, levelBucket: string): string {

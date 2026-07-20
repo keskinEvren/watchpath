@@ -8,6 +8,7 @@ interface VideoPanelProps {
   video: Video | null;
   onClose: () => void;
   relatedNodes?: RoadmapNode[];
+  aiSummary?: string;
 }
 
 function formatDuration(seconds: number | null): string {
@@ -25,7 +26,45 @@ function formatViews(count: number): string {
   return `${count} görüntülenme`;
 }
 
-export default function VideoPanel({ video, onClose, relatedNodes }: VideoPanelProps) {
+function cleanYoutubeDescription(desc: string): string {
+  if (!desc) return '';
+  const lines = desc.split('\n');
+  const cleanedLines: string[] = [];
+
+  for (const line of lines) {
+    const lowerLine = line.toLowerCase().trim();
+    if (
+      lowerLine.includes('http://') ||
+      lowerLine.includes('https://') ||
+      lowerLine.includes('www.') ||
+      lowerLine.includes('discord') ||
+      lowerLine.includes('telegram') ||
+      lowerLine.includes('instagram') ||
+      lowerLine.includes('twitter') ||
+      lowerLine.includes('facebook') ||
+      lowerLine.includes('abone') ||
+      lowerLine.includes('katıl') ||
+      lowerLine.includes('patreon') ||
+      lowerLine.includes('turan') || // Specific creator junk
+      lowerLine.startsWith('**') ||
+      lowerLine.includes('sosyal medya') ||
+      lowerLine.includes('udemy') ||
+      lowerLine.includes('sponsor') ||
+      lowerLine.includes('kodlar') ||
+      lowerLine.includes('github.com')
+    ) {
+      continue;
+    }
+    if (line.trim().length > 0) {
+      cleanedLines.push(line.trim());
+    }
+  }
+
+  const result = cleanedLines.slice(0, 4).join('\n');
+  return result.length > 0 ? result : 'Video hakkında detaylı açıklama bulunmuyor.';
+}
+
+export default function VideoPanel({ video, onClose, relatedNodes, aiSummary }: VideoPanelProps) {
   const isOpen = video !== null;
 
   const handleEscape = useCallback(
@@ -41,6 +80,9 @@ export default function VideoPanel({ video, onClose, relatedNodes }: VideoPanelP
       return () => document.removeEventListener('keydown', handleEscape);
     }
   }, [isOpen, handleEscape]);
+
+  // Clean description
+  const displayDescription = video ? cleanYoutubeDescription(video.description || '') : '';
 
   return (
     <div className={styles.overlay} data-open={isOpen}>
@@ -89,11 +131,21 @@ export default function VideoPanel({ video, onClose, relatedNodes }: VideoPanelP
                 )}
               </div>
 
-              {/* AI Summary */}
-              {video.description && (
+              {/* AI Summary (Why Watch This?) */}
+              {aiSummary && (
+                <div className={styles.aiSummaryBox}>
+                  <div className={styles.aiSummaryLabel}>
+                    <span className={styles.aiSparkle}>✨</span> Neden bu video?
+                  </div>
+                  <p className={styles.aiSummaryText}>{aiSummary}</p>
+                </div>
+              )}
+
+              {/* YouTube Description */}
+              {displayDescription && (
                 <div>
-                  <div className={styles.summaryLabel}>Özet</div>
-                  <p className={styles.summary}>{video.description}</p>
+                  <div className={styles.summaryLabel}>Video Özeti</div>
+                  <p className={styles.summary}>{displayDescription}</p>
                 </div>
               )}
 

@@ -112,7 +112,7 @@ async function runCurriculumPipeline(
     );
   }
   const categories = tree.nodes.filter((n) => n.nodeType === 'category');
-  const topics = tree.nodes.filter((n) => n.nodeType === 'topic');
+  const topics = tree.nodes.filter((n) => n.nodeType !== 'category');
   console.log(`[pipeline] Tree: ${categories.length} categories, ${topics.length} topics`);
 
   // --- Phase 1A: Save Skeleton & Set status to tree_ready ---
@@ -129,7 +129,12 @@ async function runCurriculumPipeline(
   const eduSuffixEn = 'tutorial course lesson';
 
   for (const node of topics) {
-    // 1. Search in primary language (TR or EN)
+    // 1. Skip search if not a video topic
+    if (node.nodeType === 'note' || node.nodeType === 'concept') {
+      continue;
+    }
+
+    // 2. Search in primary language (TR or EN)
     const primarySuffix = language === 'tr' ? eduSuffixTr : eduSuffixEn;
     const rawTerm = node.searchTerms[0] ?? `${topic} ${node.name}`;
     const term = `${rawTerm} ${primarySuffix}`;
@@ -390,7 +395,7 @@ async function saveSkeletonRoadmap(
   const roadmapId = roadmap.id;
 
   const categories = tree.nodes.filter((n) => n.nodeType === 'category');
-  const topics = tree.nodes.filter((n) => n.nodeType === 'topic');
+  const topics = tree.nodes.filter((n) => n.nodeType !== 'category');
 
   const topicsByParent = new Map<string, typeof topics>();
   for (const node of topics) {
@@ -464,7 +469,7 @@ async function saveSkeletonRoadmap(
     });
     yPos += NODE_Y_GAP;
 
-    // 3. Topic (Milestone) Nodes under this category
+    // 3. Topic, Note, or Concept Nodes under this category
     for (const topicNode of catTopics.sort((a, b) => a.order - b.order)) {
       dbNodes.push({
         roadmap_id: roadmapId,
@@ -480,6 +485,10 @@ async function saveSkeletonRoadmap(
           importance: topicNode.importance,
           milestone_label: topicNode.name,
           video_count: 0,
+          note_text: topicNode.noteText,
+          concept_url: topicNode.conceptUrl,
+          group_id: topicNode.groupId,
+          original_type: topicNode.nodeType,
         },
       });
       // Leave space for video chain under this topic in the layout
@@ -585,6 +594,24 @@ async function finalizeRoadmapWithVideos(
   const { nodesWithVideos } = processed;
   const topics = nodesWithVideos.filter((n) => n.nodeType === 'topic');
 
+  // Bulk generate AI reasons for selected videos
+  console.log('[pipeline] Generating bulk AI reasons for selected videos...');
+  const flatSelectedVideos = topics.flatMap((topicNode) =>
+    topicNode.videos.map((sv) => ({
+      youtube_id: sv.video.youtube_id,
+      title: sv.video.title,
+      nodeName: topicNode.name,
+    }))
+  );
+
+  let videoReasons: Record<string, string> = {};
+  try {
+    const { generateVideoReasons } = await import('@/lib/gemini');
+    videoReasons = await generateVideoReasons(processed.tree.topic, flatSelectedVideos);
+  } catch (err) {
+    console.error('[pipeline] Failed to generate video reasons:', err);
+  }
+
   const videoDbNodes: Array<{
     roadmap_id: string;
     video_id: string | null;
@@ -616,14 +643,10 @@ async function finalizeRoadmapWithVideos(
     const branchX = topicNodeData.position_x;
     let yPos = topicNodeData.position_y + NODE_Y_GAP * 0.8;
 
-    let prevId = topicDbId;
-
-    // Map videos to nodes
-    const videoNodeIds: string[] = [];
-
     for (const sv of topicNode.videos) {
       const dbVideoId = videoMap.get(sv.video.youtube_id) ?? null;
       const order = orderIndex++;
+      const reason = videoReasons[sv.video.youtube_id] || '';
 
       // Create a unique temporary id that next step will resolve, or generate a uuid
       // Since we insert video node directly, we can get its ID after insert
@@ -646,6 +669,7 @@ async function finalizeRoadmapWithVideos(
           bloom_level: sv.bloomLevel,
           language: sv.video.language,
           parent_topic_curriculum_id: topicNode.id,
+          ai_summary: reason,
         },
       };
 

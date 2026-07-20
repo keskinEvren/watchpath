@@ -1,7 +1,17 @@
 import type { YouTubeSearchResult, Video } from '@/types';
 import { getCachedSearch, setCachedSearch } from '@/lib/cache';
+import { Innertube } from 'youtubei.js';
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
+
+let innertubeInstance: Innertube | null = null;
+
+async function getInnertube(): Promise<Innertube> {
+  if (!innertubeInstance) {
+    innertubeInstance = await Innertube.create();
+  }
+  return innertubeInstance;
+}
 
 function getApiKey(): string {
   const key = process.env.YOUTUBE_API_KEY;
@@ -26,48 +36,76 @@ export async function searchVideos(
   }
 
   console.log(`[youtube] Cache miss, searching YouTube for "${query}"`);
+  let results: YouTubeSearchResult[] = [];
 
-  const params = new URLSearchParams({
-    part: 'snippet',
-    q: query,
-    type: 'video',
-    maxResults: String(maxResults),
-    relevanceLanguage: language,
-    videoEmbeddable: 'true',
-    key: getApiKey(),
-  });
+  try {
+    console.log(`[youtube] Attempting free search via youtubei.js for "${query}"`);
+    const yt = await getInnertube();
+    const search = await yt.search(query, { type: 'video' });
+    
+    const videos = search.videos || [];
+    if (videos.length > 0) {
+      results = videos.slice(0, maxResults).map((v: any) => ({
+        videoId: v.id || v.video_id,
+        title: v.title?.text || String(v.title || ''),
+        channelTitle: v.author?.name || String(v.author || ''),
+        channelId: v.author?.id || '',
+        description: v.description?.text || (typeof v.description === 'string' ? v.description : '') || '',
+        publishedAt: v.published?.text || String(v.published || ''),
+        thumbnailUrl: v.thumbnails?.[0]?.url || '',
+      }));
+      console.log(`[youtube] Successfully retrieved ${results.length} videos via youtubei.js`);
+    } else {
+      console.log(`[youtube] No videos returned by youtubei.js, falling back to official API`);
+      throw new Error('No videos returned by youtubei.js');
+    }
+  } catch (err) {
+    console.warn(`[youtube] youtubei.js failed:`, err, `. Falling back to official YouTube API.`);
+    
+    const params = new URLSearchParams({
+      part: 'snippet',
+      q: query,
+      type: 'video',
+      maxResults: String(maxResults),
+      relevanceLanguage: language,
+      videoEmbeddable: 'true',
+      key: getApiKey(),
+    });
 
-  const res = await fetch(`${YOUTUBE_API_BASE}/search?${params}`);
+    const res = await fetch(`${YOUTUBE_API_BASE}/search?${params}`);
 
-  if (!res.ok) {
-    const body = await res.text();
-    console.error(`[youtube] Search failed (${res.status}):`, body);
-    throw new Error(`YouTube search failed: ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`[youtube] Official Search fallback failed (${res.status}):`, body);
+      throw new Error(`YouTube search failed: ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    results = (data.items ?? []).map(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (item: any) => ({
+        videoId: item.id?.videoId,
+        title: item.snippet?.title ?? '',
+        channelTitle: item.snippet?.channelTitle ?? '',
+        channelId: item.snippet?.channelId ?? '',
+        description: item.snippet?.description ?? '',
+        publishedAt: item.snippet?.publishedAt ?? '',
+        thumbnailUrl:
+          item.snippet?.thumbnails?.high?.url ??
+          item.snippet?.thumbnails?.medium?.url ??
+          item.snippet?.thumbnails?.default?.url ??
+          '',
+      })
+    );
   }
 
-  const data = await res.json();
-
-  const results: YouTubeSearchResult[] = (data.items ?? []).map(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (item: any) => ({
-      videoId: item.id?.videoId,
-      title: item.snippet?.title ?? '',
-      channelTitle: item.snippet?.channelTitle ?? '',
-      channelId: item.snippet?.channelId ?? '',
-      description: item.snippet?.description ?? '',
-      publishedAt: item.snippet?.publishedAt ?? '',
-      thumbnailUrl:
-        item.snippet?.thumbnails?.high?.url ??
-        item.snippet?.thumbnails?.medium?.url ??
-        item.snippet?.thumbnails?.default?.url ??
-        '',
-    })
-  );
-
   // Cache the results (fire-and-forget)
-  setCachedSearch(query, language, results).catch((err) =>
-    console.error('[youtube] Failed to cache results:', err)
-  );
+  if (results.length > 0) {
+    setCachedSearch(query, language, results).catch((err) =>
+      console.error('[youtube] Failed to cache results:', err)
+    );
+  }
 
   return results;
 }

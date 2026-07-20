@@ -6,7 +6,7 @@
 // ---- Database Models ----
 
 export type RoadmapStatus = 'generating' | 'tree_ready' | 'ready' | 'failed';
-export type NodeType = 'root' | 'category' | 'video' | 'milestone' | 'series';
+export type NodeType = 'root' | 'category' | 'video' | 'milestone' | 'series' | 'note' | 'concept';
 export type EdgeType = 'prerequisite' | 'related' | 'optional';
 export type Level = 'beginner' | 'intermediate' | 'advanced';
 export type BranchWeight = 'recommended' | 'optional' | 'neutral';
@@ -89,6 +89,12 @@ export interface NodeMetadata {
   // Milestone node
   milestone_label?: string;
   next_chapter?: string;
+  // Note / Concept node
+  note_text?: string;
+  concept_url?: string;
+  group_id?: string;
+  importance?: CurriculumImportance;
+  original_type?: string;
 }
 
 export interface RoadmapEdge {
@@ -212,6 +218,19 @@ export interface VideoNodeData {
 export interface MilestoneNodeData {
   label: string;
   nextChapter?: string;
+  importance?: CurriculumImportance;
+}
+
+export interface NoteNodeData {
+  label: string;
+  noteText?: string;
+  importance?: CurriculumImportance;
+}
+
+export interface ConceptNodeData {
+  label: string;
+  conceptUrl?: string;
+  importance?: CurriculumImportance;
 }
 
 export interface SeriesNodeData {
@@ -289,7 +308,7 @@ export interface ProcessedRoadmap {
 
 // ---- Curriculum-First Types (v3) ----
 
-export type CurriculumNodeType = 'category' | 'topic';
+export type CurriculumNodeType = 'category' | 'topic' | 'note' | 'concept';
 export type CurriculumImportance = 'required' | 'recommended' | 'optional';
 
 export interface CurriculumNode {
@@ -301,6 +320,9 @@ export interface CurriculumNode {
   importance: CurriculumImportance;
   searchTerms: string[];               // YouTube search terms for this node
   nodeType: CurriculumNodeType;        // category = branch head, topic = leaf
+  groupId?: string | null;             // For visually grouping nodes
+  conceptUrl?: string;                 // For 'concept' nodes
+  noteText?: string;                   // For 'note' nodes
 }
 
 export interface CurriculumTree {

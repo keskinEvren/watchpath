@@ -40,6 +40,30 @@
 - [x] app/api/roadmap/[slug]/route.ts (GET, view_count++)
 - [x] app/api/video/[youtubeId]/route.ts (GET, cache-first)
 
+## Roadmap V3 Tasks
+
+- [x] Update Data Models (`types/index.ts`)
+  - Add `note` and `concept` to `NodeType` and `CurriculumNodeType`.
+  - Add `importance`, `noteText`, `conceptUrl`, `groupId` fields.
+- [x] Update AI Prompt (`lib/gemini.ts`)
+  - Update Zod schema to include new types and fields.
+  - Update system prompt instructions to generate these new nodes.
+- [x] Update Pipeline (`lib/roadmap-generator.ts`)
+  - Skip YouTube search for `note` and `concept` nodes.
+  - Map new fields into `metadata` when creating `RoadmapNode`.
+- [x] Create UI Components
+  - [x] Create `NoteNode.tsx`
+  - [x] Create `ConceptNode.tsx`
+  - [-] Update `RoadmapCanvas.tsx` to handle node grouping (Parent/Child). (Deferred for dagre layout stability)
+  - [-] Create `RightDrawer` component to display node details. (Deferred: notes show inline, concepts open URL)
+- [x] Verify changes with a local build and test generation.
+
+## Phase 2: Dynamic Branching
+- [x] Integrate User Profile answers into prompt (`lib/gemini.ts`)
+- [x] Instruct Gemini to branch curriculum structure based on Level and Goal
+- [x] Instruct Gemini to generate custom tips/notes based on user Weakness
+- [x] Build and verify compiler output successfully
+
 ## ✅ Gün 3: Frontend - Roadmap Canvas + Video Panel
 
 ### Node Bileşenleri

@@ -4,19 +4,19 @@ import type { PipelineStatus } from '@/types';
 import styles from './LoadingOverlay.module.css';
 
 interface LoadingOverlayProps {
-  status: PipelineStatus;
+  status: PipelineStatus | 'generating';
 }
 
-const STEPS: { key: PipelineStatus; label: string }[] = [
-  { key: 'searching', label: "YouTube'da aranıyor..." },
-  { key: 'found_videos', label: 'Videolar bulundu' },
-  { key: 'fetching_transcripts', label: 'Transkriptler çekiliyor...' },
-  { key: 'analyzing', label: 'AI yol haritasını yapılandırıyor...' },
+const STEPS: { key: string; label: string }[] = [
+  { key: 'generating', label: 'Yapay zeka müfredat planlıyor...' },
+  { key: 'searching', label: "YouTube'da videolar aranıyor..." },
+  { key: 'fetching_transcripts', label: 'Transkriptler analiz ediliyor...' },
+  { key: 'analyzing', label: 'Yol haritası çiziliyor...' },
 ];
 
-const ORDER: PipelineStatus[] = [
+const ORDER: string[] = [
+  'generating',
   'searching',
-  'found_videos',
   'fetching_transcripts',
   'analyzing',
   'ready',
@@ -24,8 +24,8 @@ const ORDER: PipelineStatus[] = [
 ];
 
 function getStepState(
-  stepKey: PipelineStatus,
-  currentStatus: PipelineStatus
+  stepKey: string,
+  currentStatus: string
 ): 'completed' | 'active' | 'pending' {
   const stepIndex = ORDER.indexOf(stepKey);
   const currentIndex = ORDER.indexOf(currentStatus);
@@ -36,6 +36,9 @@ function getStepState(
 }
 
 export default function LoadingOverlay({ status }: LoadingOverlayProps) {
+  // If we poll and get 'loading', show 'generating' state
+  const currentStatus = status === 'generating' ? 'generating' : status;
+
   return (
     <div className={styles.overlay} id="loading-overlay" role="alert" aria-busy="true">
       <div className={styles.content}>
@@ -44,7 +47,7 @@ export default function LoadingOverlay({ status }: LoadingOverlayProps) {
 
         <div className={styles.steps}>
           {STEPS.map((step) => {
-            const state = getStepState(step.key, status);
+            const state = getStepState(step.key, currentStatus);
 
             const stepClassName = [
               styles.step,

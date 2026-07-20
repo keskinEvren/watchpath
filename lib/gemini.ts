@@ -388,33 +388,52 @@ export async function generateCurriculumTree(
     : profile.level < 0.6 ? 'orta'
     : 'ileri';
 
+  const answersText = Object.entries(profile.answers || {})
+    .map(([key, val]) => `- ${key}: ${val}`)
+    .join('\n');
+
   const prompt = `"${topic}" konusu için detaylı bir öğrenme yol haritası (roadmap) oluştur.
 
-Kullanıcı bilgileri:
-- Seviye: ${levelDesc}
+Kullanıcı Profili ve Anket Cevapları:
+- Genel Seviye: ${levelDesc}
 - Hedef: ${profile.goal}
-- Zorlandığı alan: ${profile.weakness}
+- Zorlandığı Alan: ${profile.weakness}
+Cevap detayları:
+${answersText}
 
-Kurallar:
-1. 4-8 ana kategori (dal) oluştur. Her kategori bir öğrenme alanını temsil eder.
+Dallanma (Branching) ve Özelleştirme Kuralları:
+1. Seviyeye Göre Dallanma: 
+   - Seviye başlangıçsa ("beginner"/"elementary"), ilk kategorileri çok detaylı tut ve "required" yap. İleri düzey konuları en sona at ve "optional" olarak işaretle.
+   - Seviye ileri ise ("advanced"/"expert"), giriş ve temel konuları ya hiç ekleme ya da tek bir "required" kategori altında çok hızlı özet olarak geç. Zamanının çoğunu ileri düzey konulara, mimari kararlara ayır.
+2. Hedefe Göre Önceliklendirme:
+   - Kullanıcının hedefi "career" (iş bulmak/kariyer) ise, endüstri standartları, test yazımı, CI/CD ve mülakatlarda sorulan konuları ekle.
+   - Hedef "project" (proje yapmak) ise, pratik yapabileceği bağımsız proje adımlarını haritaya dallandır.
+3. Zorlanılan Alana Göre İpuçları (Weakness-driven Notes):
+   - Kullanıcı neyde zorlandığını belirttiyse (örn: "practice", "fundamentals", "staying-consistent"), bu zorluğu aşması için ona özel rehberlik eden, motivasyon sağlayan ve pratik yapma yöntemleri öneren en az 2-3 adet kapsamlı "note" (tavsiye) düğümü ekle.
+
+Genel Kurallar:
+1. 4-8 ana kategori (dal) oluştur. Her kategori bir öğrenme alanını temsil eder. Her kategorinin adını ("name"), kullanıcının amacına (Hedef: ${profile.goal}) ve ilgi alanına göre ilgi çekici, kancalı (hook-driven) ve merak uyandırıcı hale getir (örn: "Giriş" yerine "İlk Adım: Sektör Standartları", "Kariyer Hedefiniz için Temeller" gibi).
 2. Her kategorinin altında 2-6 alt konu (yaprak node) olsun.
 3. Toplam 20-40 node hedefle.
-4. Her node için:
+4. Sadece video izlenecek konuları değil, aralara kullanıcının dikkat etmesi gereken önemli tavsiyeleri ("note" tipinde) ve sadece okuyarak anlaşılabilecek kısa kavramları ("concept" tipinde) BOLCA ekle. Her ana kategori (category) altında EN AZ 1 adet "note" ve EN AZ 1-2 adet "concept" düğümü bulunması ZORUNLUDUR. Toplam yol haritasındaki düğümlerin en az %30-40'ı "note" ve "concept" düğümlerinden oluşmalıdır (sadece video listesi olmaktan çıkıp zengin bir rehber olmalı).
+5. Her node için şu alanları dön:
    - id: kebab-case benzersiz ID (örn: "hooks-usestate")
    - name: Kısa başlık (örn: "useState")
    - description: 1 cümlelik açıklama
    - parentId: üst kategori ID'si (ana kategoriler için null)
    - order: sıra numarası (0'dan başla)
    - importance: "required" (olmazsa olmaz), "recommended" (önerilen), "optional" (isteğe bağlı)
-   - searchTerms: Bu konuyu anlatan YouTube videosu bulmak için 2-3 arama terimi (${language === 'tr' ? 'Türkçe' : 'İngilizce'})
-   - nodeType: "category" (ana dal) veya "topic" (yaprak konu)
-5. ${levelDesc} seviyesi için ileri konuları "optional" yap.
-6. Konular mantıklı sırada olsun (temelden ileriye).
-7. searchTerms gerçekçi olsun, YouTube'da bulunabilecek terimler.
+   - searchTerms: "topic" veya "category" ise YouTube araması için 2-3 arama terimi (${language === 'tr' ? 'Türkçe' : 'İngilizce'}). Diğerlerinde boş liste.
+   - nodeType: "category" (ana dal), "topic" (video konusu), "note" (tavsiye/ipucu), veya "concept" (okuma materyali).
+   - groupId: (opsiyonel) Birbiriyle çok yakından ilişkili düğümleri aynı şeffaf kutu içinde gruplamak istersen onlara aynı groupId'yi ver (örn: "db-group").
+   - noteText: (sadece nodeType="note" ise) Tavsiye metninin kendisi (en az 2-3 cümlelik kapsamlı ve samimi bir tavsiye yaz).
+   - conceptUrl: (sadece nodeType="concept" ise) Okuma materyali için MDN, Wikipedia, dev.to, resmi dokümanlar vb. linki.
+6. ${levelDesc} seviyesi için ileri konuları "optional" yap.
+7. Konular mantıklı sırada olsun (temelden ileriye).
 
 Örnek yapı (React için):
-- Components (category) -> JSX (topic), Props (topic), State (topic)
-- Hooks (category) -> useState (topic), useEffect (topic)
+- Components (category) -> JSX (topic), Props (topic), "Componentleri küçük tutun" (note), State (topic)
+- "db-group" adında groupId'ye sahip: MySQL (topic), PostgreSQL (topic)
 
 JSON formatında döndür:
 {
@@ -439,8 +458,10 @@ Sadece JSON döndür, başka metin ekleme.`;
     if (!node.id || !node.name || !node.nodeType) {
       throw new Error(`Invalid node: missing id, name, or nodeType`);
     }
-    if (!node.searchTerms || node.searchTerms.length === 0) {
+    if ((node.nodeType === 'category' || node.nodeType === 'topic') && (!node.searchTerms || node.searchTerms.length === 0)) {
       node.searchTerms = [`${topic} ${node.name} ${language === 'tr' ? 'ders' : 'tutorial'}`];
+    } else if (node.nodeType === 'note' || node.nodeType === 'concept') {
+      node.searchTerms = []; // Notes and concepts don't need search terms
     }
     if (!node.importance) {
       node.importance = 'recommended';
@@ -449,4 +470,42 @@ Sadece JSON döndür, başka metin ekleme.`;
 
   parsed.topic = topic;
   return parsed;
+}
+
+/**
+ * Generate 1-sentence explanations for selected videos in bulk.
+ * Returns a record mapping youtube_id -> reason.
+ */
+export async function generateVideoReasons(
+  topic: string,
+  videos: { youtube_id: string; title: string; nodeName: string }[],
+): Promise<Record<string, string>> {
+  if (videos.length === 0) return {};
+
+  const videoList = videos
+    .map((v) => `- ID: ${v.youtube_id}\n  Title: ${v.title}\n  Topic Node: ${v.nodeName}`)
+    .join('\n\n');
+
+  const prompt = `Kullanıcı "${topic}" konusunu öğreniyor. Bu kapsamda seçilen aşağıdaki YouTube videoları için, o videonun neden o konuyu (Topic Node) öğrenmek için seçildiğini açıklayan 1 cümlelik Türkçe, samimi ve ikna edici açıklamalar ("ai_reason") yaz.
+
+Videolar:
+${videoList}
+
+JSON formatında döndür, anahtarlar video ID'leri olsun:
+{
+  "youtube_id_1": "Bu video, konunun temellerini basit örneklerle anlattığı için seçildi.",
+  "youtube_id_2": "..."
+}
+
+Sadece geçerli JSON döndür, markdown biçimlendirmesi (fences) kullanma.`;
+
+  try {
+    const text = await callGemini(prompt, true);
+    const cleaned = text.replace(/```json\n?/gi, '').replace(/```\n?/gi, '').trim();
+    const parsed = JSON.parse(cleaned) as Record<string, string>;
+    return parsed;
+  } catch (err) {
+    console.error('[gemini] generateVideoReasons failed:', err);
+    return {};
+  }
 }

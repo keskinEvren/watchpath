@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { InterviewQuestion, UserProfile } from '@/types';
+import { generateDynamicQuestions } from '@/lib/gemini';
 
 /**
  * Generate interview questions for a given topic.
@@ -15,8 +16,12 @@ import type { InterviewQuestion, UserProfile } from '@/types';
 export async function generateInterviewQuestions(
   topic: string,
 ): Promise<InterviewQuestion[]> {
-  // Use static fallback questions (no Gemini call needed - saves cost)
-  return buildFallbackQuestions(topic);
+  try {
+    return await generateDynamicQuestions(topic);
+  } catch (err) {
+    console.warn('[interview] Failed to generate dynamic questions, using fallback:', err);
+    return buildFallbackQuestions(topic);
+  }
 }
 
 /**

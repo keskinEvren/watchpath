@@ -39,7 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_search_cache_query ON search_cache(query, languag
 CREATE INDEX IF NOT EXISTS idx_search_cache_expires ON search_cache(expires_at);
 
 -- 3. Roadmaps table
-CREATE TYPE roadmap_status AS ENUM ('generating', 'ready', 'failed');
+CREATE TYPE roadmap_status AS ENUM ('generating', 'tree_ready', 'ready', 'failed');
 
 CREATE TABLE IF NOT EXISTS roadmaps (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
